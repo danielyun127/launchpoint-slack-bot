@@ -1,0 +1,35 @@
+name: Daily LaunchPoint Report
+
+on:
+  schedule:
+    # 9:00 AM Pacific Daylight Time (UTC-7) = 16:00 UTC.
+    # NOTE: US DST ends the first Sunday of November. Once clocks fall back
+    # to Pacific Standard Time (UTC-8), this will fire at 8:00 AM PST
+    # instead of 9:00 AM. Update to '0 17 * * *' then (and back to
+    # '0 16 * * *' when DST resumes in March) if you want it locked to 9am.
+    - cron: "0 16 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  send-report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Send report
+        env:
+          LAUNCHPOINT_MCP_URL: ${{ secrets.LAUNCHPOINT_MCP_URL }}
+          LAUNCHPOINT_API_KEY: ${{ secrets.LAUNCHPOINT_API_KEY }}
+          LAUNCHPOINT_CAMPAIGN_ID: ${{ secrets.LAUNCHPOINT_CAMPAIGN_ID }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          CLIENT_NAME: ${{ secrets.CLIENT_NAME }}
+        run: python main.py
