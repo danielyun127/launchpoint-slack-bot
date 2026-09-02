@@ -12,13 +12,17 @@ load_dotenv()
 
 from launchpoint_client import fetch_campaign_metrics
 from slack_reporter import send_report
+from snapshot import load_snapshot, save_snapshot, compute_deltas
 
 
 def run_once():
     print("Fetching LaunchPoint metrics...")
     metrics = fetch_campaign_metrics()
+    previous = load_snapshot()
+    deltas = compute_deltas(metrics, previous)
     print("Sending Slack report...")
-    send_report(metrics)
+    send_report(metrics, deltas)
+    save_snapshot(metrics)
     print("Done.")
 
 
