@@ -27,13 +27,22 @@ class MCPSession:
         }
         self.session_id = None
 
-    def _post(self, payload: dict) -> dict:
+    def _post(self, payload: dict, retries: int = 3) -> dict:
         headers = dict(self.headers)
         if self.session_id:
             headers["Mcp-Session-Id"] = self.session_id
 
-        resp = requests.post(self.url, headers=headers, json=payload, timeout=30)
-        resp.raise_for_status()
+        # Report runs now make dozens of calls (paginating list_posts/list_payouts),
+        # and this endpoint occasionally stalls past 30s on an individual request —
+        # retry transient network/timeout errors rather than failing the whole run.
+        for attempt in range(retries):
+            try:
+                resp = requests.post(self.url, headers=headers, json=payload, timeout=45)
+                resp.raise_for_status()
+                break
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
+                if attempt == retries - 1:
+                    raise
 
         # Server may hand back a session id on first response
         if "Mcp-Session-Id" in resp.headers:

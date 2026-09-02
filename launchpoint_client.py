@@ -38,19 +38,33 @@ class CampaignMetrics:
     # analytics_overview tool exposes views/engagement/earnings, not
     # clicks or conversions, so those aren't modeled here.
     #
-    # total_earnings / earnings_cpm are deliberately NOT called "payouts"/"cpm":
-    # the dashboard's Spend tile ($107.9k, incl. $64.1k bonuses) and CPM ($2.62)
-    # are computed from a spend figure that no LaunchPoint MCP tool exposes for
-    # a specific campaign (get_analytics_overview's totalEarnings is fully
-    # accounted for by platformBreakdown earnings alone, with no bonus
-    # component). These fields are creator earnings only, and will read lower
-    # than the dashboard's Spend/CPM tiles.
+    # base_creator_payouts / bonus_payouts / total_spend / cpm / base_cpm:
+    # NONE of these can be made to match the dashboard's Spend ($107.9k),
+    # Bonuses ($64.1k), or CPM ($2.62) tiles exactly — no LaunchPoint MCP
+    # tool exposes the dashboard's spend aggregation for a specific campaign.
+    #   - base_creator_payouts = get_analytics_overview's totalEarnings,
+    #     fully accounted for by platformBreakdown earnings (no bonus mixed in).
+    #   - bonus_payouts = list_payouts (workspace-wide ledger) paginated in
+    #     full and filtered client-side to this campaign's programId, summing
+    #     "Canvas post bonus charge" debits. This is real, traceable spend —
+    #     but it totals $27,205.50 for this campaign, not the dashboard's
+    #     stated $64.1k, so the two are tracking different things.
+    #   - total_spend = base_creator_payouts + bonus_payouts, and therefore
+    #     also won't match the dashboard's $107.9k.
+    # Keep these gaps visible in the Slack report rather than silently
+    # presenting numbers that look authoritative but don't reconcile.
     total_views: int = 0
     total_creators: int = 0
-    total_earnings: float = 0.0
     total_posts: int = 0
+    total_likes: int = 0
+    total_comments: int = 0
+    total_shares: int = 0
     engagement_rate: float = 0.0
-    earnings_cpm: float = 0.0
+    base_creator_payouts: float = 0.0
+    bonus_payouts: float = 0.0
+    total_spend: float = 0.0
+    cpm: float = 0.0       # total_spend based (dashboard's definition, but won't match)
+    base_cpm: float = 0.0  # base_creator_payouts based only
     top_creators: list = field(default_factory=list)  # [{"name": str, "views": int}]
 
 
@@ -116,6 +130,35 @@ def _count_posts_with_view_data(session, program_id: str) -> int:
     return count
 
 
+def _fetch_campaign_bonus_total(session, program_id: str) -> float:
+    """
+    list_payouts has no program_id filter param, but every returned record
+    carries its own "programId" field, so we page through the full workspace
+    ledger (all campaigns) and sum client-side for just this one. Every
+    record observed so far is a "Canvas post bonus charge" debit; the
+    "bonus" substring check is there so a future non-bonus ledger entry type
+    doesn't silently get miscounted as a bonus.
+    """
+    total = 0.0
+    page = 1
+    while True:
+        result = session.call_tool("list_payouts", {"limit": 200, "page": page})
+        payload = _mcp_json(result)
+        rows = payload.get("data", [])
+        if not rows:
+            break
+        for row in rows:
+            if row.get("programId") != program_id:
+                continue
+            if "bonus" in (row.get("description") or "").lower():
+                total += abs(row.get("amount", 0) or 0)
+        page_count = len(rows)
+        if page_count < 200:  # short page means this was the last one
+            break
+        page += 1
+    return total
+
+
 def fetch_via_mcp() -> CampaignMetrics:
     """
     Calls LaunchPoint's MCP tool `get_analytics_overview`, scoped to our
@@ -147,13 +190,23 @@ def fetch_via_mcp() -> CampaignMetrics:
         if total_views else 0.0
     )
 
+    base_creator_payouts = float(summary.get("totalEarnings", 0))
+    bonus_payouts = _fetch_campaign_bonus_total(session, CAMPAIGN_ID)
+    total_spend = base_creator_payouts + bonus_payouts
+
     return CampaignMetrics(
         total_views=total_views,
         total_creators=int(summary.get("uniqueCreators", 0)),
-        total_earnings=float(summary.get("totalEarnings", 0)),
         total_posts=_count_posts_with_view_data(session, CAMPAIGN_ID),
+        total_likes=total_likes,
+        total_comments=total_comments,
+        total_shares=total_shares,
         engagement_rate=engagement_rate,
-        earnings_cpm=round(float(summary.get("cpm") or 0), 2),
+        base_creator_payouts=base_creator_payouts,
+        bonus_payouts=bonus_payouts,
+        total_spend=total_spend,
+        cpm=round(total_spend / total_views * 1000, 2) if total_views else 0.0,
+        base_cpm=round(base_creator_payouts / total_views * 1000, 2) if total_views else 0.0,
         top_creators=[
             {"name": c.get("name", "?"), "views": int(c.get("views", 0))}
             for c in sorted(_filter_creators(data.get("topCreators", [])), key=lambda c: c.get("views", 0), reverse=True)[:5]
@@ -173,10 +226,14 @@ def fetch_via_api() -> CampaignMetrics:
     data = resp.json()
 
     # TODO: adjust these keys to match the real response shape once you see it
+    # NOTE: this fallback mode has no way to distinguish base payouts from
+    # bonuses, so it reports the whole amount as base and leaves bonus at 0.
+    base_payouts = float(data.get("totalPayouts", 0))
     metrics = CampaignMetrics(
         total_views=int(data.get("totalViews", 0)),
         total_creators=int(data.get("creatorCount", 0)),
-        total_earnings=float(data.get("totalPayouts", 0)),
+        base_creator_payouts=base_payouts,
+        total_spend=base_payouts,
         top_creators=[
             {"name": c.get("name", "?"), "views": int(c.get("views", 0))}
             for c in sorted(_filter_creators(data.get("creators", [])), key=lambda c: c.get("views", 0), reverse=True)[:5]
@@ -235,7 +292,8 @@ def fetch_via_scrape() -> CampaignMetrics:
         return CampaignMetrics(
             total_views=int(total_views),
             total_creators=int(total_creators),
-            total_earnings=total_payouts,
+            base_creator_payouts=total_payouts,
+            total_spend=total_payouts,
             top_creators=top_creators,
         )
 

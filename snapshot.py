@@ -30,10 +30,16 @@ def save_snapshot(metrics: CampaignMetrics) -> None:
         "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "total_views": metrics.total_views,
         "total_creators": metrics.total_creators,
-        "total_earnings": metrics.total_earnings,
         "total_posts": metrics.total_posts,
+        "total_likes": metrics.total_likes,
+        "total_comments": metrics.total_comments,
+        "total_shares": metrics.total_shares,
         "engagement_rate": metrics.engagement_rate,
-        "earnings_cpm": metrics.earnings_cpm,
+        "base_creator_payouts": metrics.base_creator_payouts,
+        "bonus_payouts": metrics.bonus_payouts,
+        "total_spend": metrics.total_spend,
+        "cpm": metrics.cpm,
+        "base_cpm": metrics.base_cpm,
         "top_creators": metrics.top_creators,
     }
     with open(SNAPSHOT_PATH, "w") as f:
@@ -50,10 +56,15 @@ def compute_deltas(today: CampaignMetrics, previous: dict | None) -> dict:
     If there's no previous snapshot (first run ever), every delta is 0.
     """
     if previous is None:
-        return {"views": 0, "creators": 0, "earnings": 0.0, "posts": 0}
+        return {
+            "views": 0, "creators": 0, "posts": 0,
+            "total_spend": 0.0, "base_creator_payouts": 0.0, "bonus_payouts": 0.0,
+        }
     return {
         "views": today.total_views - int(previous.get("total_views", 0)),
         "creators": today.total_creators - int(previous.get("total_creators", 0)),
-        "earnings": today.total_earnings - float(previous.get("total_earnings", 0.0)),
         "posts": today.total_posts - int(previous.get("total_posts", 0)),
+        "total_spend": today.total_spend - float(previous.get("total_spend", 0.0)),
+        "base_creator_payouts": today.base_creator_payouts - float(previous.get("base_creator_payouts", 0.0)),
+        "bonus_payouts": today.bonus_payouts - float(previous.get("bonus_payouts", 0.0)),
     }
