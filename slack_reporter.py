@@ -37,10 +37,10 @@ def build_blocks(metrics: CampaignMetrics, deltas: dict) -> list:
             "fields": [
                 {"type": "mrkdwn", "text": f"*Views Gained*\n{_signed_int(deltas['views'])}"},
                 {"type": "mrkdwn", "text": f"*Creators Δ*\n{_signed_int(deltas['creators'])}"},
-                {"type": "mrkdwn", "text": f"*Payouts Added*\n{_signed_money(deltas['payouts'])}"},
+                {"type": "mrkdwn", "text": f"*Earnings Added*\n{_signed_money(deltas['earnings'])}"},
                 {"type": "mrkdwn", "text": f"*Posts Added*\n{_signed_int(deltas['posts'])}"},
                 {"type": "mrkdwn", "text": f"*Engagement Rate*\n{metrics.engagement_rate}%"},
-                {"type": "mrkdwn", "text": f"*CPM*\n${metrics.cpm:,.2f}"},
+                {"type": "mrkdwn", "text": f"*Earnings CPM*\n${metrics.earnings_cpm:,.2f}"},
             ],
         },
         {"type": "divider"},
@@ -53,10 +53,16 @@ def build_blocks(metrics: CampaignMetrics, deltas: dict) -> list:
             "fields": [
                 {"type": "mrkdwn", "text": f"*Total Views*\n{metrics.total_views:,}"},
                 {"type": "mrkdwn", "text": f"*Active Creators*\n{metrics.total_creators:,}"},
-                {"type": "mrkdwn", "text": f"*Total Payouts*\n${metrics.total_payouts:,.2f}"},
+                {"type": "mrkdwn", "text": f"*Creator Earnings*\n${metrics.total_earnings:,.2f}"},
                 {"type": "mrkdwn", "text": f"*Total Posts*\n{metrics.total_posts:,}"},
                 {"type": "mrkdwn", "text": f"*Engagement Rate*\n{metrics.engagement_rate}%"},
-                {"type": "mrkdwn", "text": f"*CPM*\n${metrics.cpm:,.2f}"},
+                {"type": "mrkdwn", "text": f"*Earnings CPM*\n${metrics.earnings_cpm:,.2f}"},
+            ],
+        },
+        {
+            "type": "context",
+            "elements": [
+                {"type": "mrkdwn", "text": "_Creator Earnings/CPM reflect confirmed creator payouts only — they exclude bonuses, so they'll read lower than the dashboard's Spend/CPM tiles._"},
             ],
         },
         {"type": "divider"},

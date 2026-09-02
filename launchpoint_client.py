@@ -37,12 +37,20 @@ class CampaignMetrics:
     # LaunchPoint is a creator/UGC platform, not an ad-click tracker: its
     # analytics_overview tool exposes views/engagement/earnings, not
     # clicks or conversions, so those aren't modeled here.
+    #
+    # total_earnings / earnings_cpm are deliberately NOT called "payouts"/"cpm":
+    # the dashboard's Spend tile ($107.9k, incl. $64.1k bonuses) and CPM ($2.62)
+    # are computed from a spend figure that no LaunchPoint MCP tool exposes for
+    # a specific campaign (get_analytics_overview's totalEarnings is fully
+    # accounted for by platformBreakdown earnings alone, with no bonus
+    # component). These fields are creator earnings only, and will read lower
+    # than the dashboard's Spend/CPM tiles.
     total_views: int = 0
     total_creators: int = 0
-    total_payouts: float = 0.0
+    total_earnings: float = 0.0
     total_posts: int = 0
     engagement_rate: float = 0.0
-    cpm: float = 0.0
+    earnings_cpm: float = 0.0
     top_creators: list = field(default_factory=list)  # [{"name": str, "views": int}]
 
 
@@ -68,6 +76,46 @@ def _to_number(text: str) -> float:
         return 0.0
 
 
+def _mcp_json(result: dict) -> dict:
+    """
+    MCP tool results are usually {"content": [{"type": "text", "text": "<json string>"}]}
+    or sometimes structured JSON directly under "structuredContent". Handle both.
+    """
+    import json
+    if "structuredContent" in result:
+        return result["structuredContent"]
+    text = result.get("content", [{}])[0].get("text", "{}")
+    return json.loads(text)
+
+
+def _count_posts_with_view_data(session, program_id: str) -> int:
+    """
+    The dashboard's "Posts" tile (e.g. "5.5k") counts posts that have picked up
+    view data, not every post row LaunchPoint has recorded. get_analytics_overview's
+    summary.totalPosts includes posts still at 0 views (not yet synced/hydrated),
+    which is why it reads noticeably higher than the dashboard (e.g. 6,088 vs "5.5k").
+    There's no server-side filter for this, so we page through list_posts and count
+    client-side.
+    """
+    count = 0
+    page = 1
+    while True:
+        result = session.call_tool(
+            "list_posts",
+            {"program_ids": [program_id], "limit": 500, "page": page},
+        )
+        payload = _mcp_json(result)
+        rows = payload.get("data", [])
+        if not rows:
+            break
+        count += sum(1 for r in rows if (r.get("views") or 0) > 0)
+        total_pages = payload.get("totalPages", 1)
+        if page >= total_pages:
+            break
+        page += 1
+    return count
+
+
 def fetch_via_mcp() -> CampaignMetrics:
     """
     Calls LaunchPoint's MCP tool `get_analytics_overview`, scoped to our
@@ -81,26 +129,31 @@ def fetch_via_mcp() -> CampaignMetrics:
         "get_analytics_overview",
         {"program_id": CAMPAIGN_ID},
     )
-
-    # MCP tool results are usually {"content": [{"type": "text", "text": "<json string>"}]}
-    # or sometimes structured JSON directly under "structuredContent". Handle both.
-    import json
-    if "structuredContent" in result:
-        payload = result["structuredContent"]
-    else:
-        text = result.get("content", [{}])[0].get("text", "{}")
-        payload = json.loads(text)
+    payload = _mcp_json(result)
 
     data = payload.get("data", payload)
     summary = data.get("summary", {})
 
+    total_views = int(summary.get("totalViews", 0))
+    total_likes = int(summary.get("totalLikes", 0))
+    total_comments = int(summary.get("totalComments", 0))
+    total_shares = int(summary.get("totalShares", 0))
+
+    # summary.engagementRate additionally folds in totalBookmarks, which is why
+    # it reads ~2.46% while the dashboard's Engagement tile shows 1.4% — the
+    # dashboard defines engagement as (likes + comments + shares) / views only.
+    engagement_rate = (
+        round((total_likes + total_comments + total_shares) / total_views * 100, 2)
+        if total_views else 0.0
+    )
+
     return CampaignMetrics(
-        total_views=int(summary.get("totalViews", 0)),
+        total_views=total_views,
         total_creators=int(summary.get("uniqueCreators", 0)),
-        total_payouts=float(summary.get("totalEarnings", 0)),
-        total_posts=int(summary.get("totalPosts", 0)),
-        engagement_rate=round(float(summary.get("engagementRate") or 0), 2),
-        cpm=round(float(summary.get("cpm") or 0), 2),
+        total_earnings=float(summary.get("totalEarnings", 0)),
+        total_posts=_count_posts_with_view_data(session, CAMPAIGN_ID),
+        engagement_rate=engagement_rate,
+        earnings_cpm=round(float(summary.get("cpm") or 0), 2),
         top_creators=[
             {"name": c.get("name", "?"), "views": int(c.get("views", 0))}
             for c in sorted(_filter_creators(data.get("topCreators", [])), key=lambda c: c.get("views", 0), reverse=True)[:5]
@@ -123,7 +176,7 @@ def fetch_via_api() -> CampaignMetrics:
     metrics = CampaignMetrics(
         total_views=int(data.get("totalViews", 0)),
         total_creators=int(data.get("creatorCount", 0)),
-        total_payouts=float(data.get("totalPayouts", 0)),
+        total_earnings=float(data.get("totalPayouts", 0)),
         top_creators=[
             {"name": c.get("name", "?"), "views": int(c.get("views", 0))}
             for c in sorted(_filter_creators(data.get("creators", [])), key=lambda c: c.get("views", 0), reverse=True)[:5]
@@ -182,7 +235,7 @@ def fetch_via_scrape() -> CampaignMetrics:
         return CampaignMetrics(
             total_views=int(total_views),
             total_creators=int(total_creators),
-            total_payouts=total_payouts,
+            total_earnings=total_payouts,
             top_creators=top_creators,
         )
 
