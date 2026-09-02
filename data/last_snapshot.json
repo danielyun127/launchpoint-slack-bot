@@ -1,10 +1,31 @@
 {
-  "generated_at": null,
-  "total_views": 0,
-  "total_creators": 0,
-  "total_payouts": 0.0,
-  "total_posts": 0,
-  "engagement_rate": 0.0,
-  "cpm": 0.0,
-  "top_creators": []
+  "generated_at": "2026-09-02T21:42:42.978775+00:00",
+  "total_views": 41473584,
+  "total_creators": 82,
+  "total_payouts": 53535.0,
+  "total_posts": 6088,
+  "engagement_rate": 2.46,
+  "cpm": 1.29,
+  "top_creators": [
+    {
+      "name": "Enya Cheng",
+      "views": 7464194
+    },
+    {
+      "name": "Jasper Amenounve",
+      "views": 5064172
+    },
+    {
+      "name": "EJ Mae Palafox",
+      "views": 4257849
+    },
+    {
+      "name": "Tbo Soto",
+      "views": 3740231
+    },
+    {
+      "name": "Kelly Zhao",
+      "views": 3195661
+    }
+  ]
 }
