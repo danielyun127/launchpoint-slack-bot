@@ -2,9 +2,15 @@
   "generated_at": null,
   "total_views": 0,
   "total_creators": 0,
-  "total_earnings": 0.0,
   "total_posts": 0,
+  "total_likes": 0,
+  "total_comments": 0,
+  "total_shares": 0,
   "engagement_rate": 0.0,
-  "earnings_cpm": 0.0,
+  "base_creator_payouts": 0.0,
+  "bonus_payouts": 0.0,
+  "total_spend": 0.0,
+  "cpm": 0.0,
+  "base_cpm": 0.0,
   "top_creators": []
 }
