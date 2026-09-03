@@ -38,21 +38,14 @@ class CampaignMetrics:
     # analytics_overview tool exposes views/engagement/earnings, not
     # clicks or conversions, so those aren't modeled here.
     #
-    # base_creator_payouts / bonus_payouts / total_spend / cpm / base_cpm:
-    # NONE of these can be made to match the dashboard's Spend ($107.9k),
-    # Bonuses ($64.1k), or CPM ($2.62) tiles exactly — no LaunchPoint MCP
-    # tool exposes the dashboard's spend aggregation for a specific campaign.
-    #   - base_creator_payouts = get_analytics_overview's totalEarnings,
-    #     fully accounted for by platformBreakdown earnings (no bonus mixed in).
-    #   - bonus_payouts = list_payouts (workspace-wide ledger) paginated in
-    #     full and filtered client-side to this campaign's programId, summing
-    #     "Canvas post bonus charge" debits. This is real, traceable spend —
-    #     but it totals $27,205.50 for this campaign, not the dashboard's
-    #     stated $64.1k, so the two are tracking different things.
-    #   - total_spend = base_creator_payouts + bonus_payouts, and therefore
-    #     also won't match the dashboard's $107.9k.
-    # Keep these gaps visible in the Slack report rather than silently
-    # presenting numbers that look authoritative but don't reconcile.
+    # total_spend comes from the separate REST payouts/spend endpoint
+    # (docs.launchpointhq.com/api-reference/v1/payouts/report-creator-spend-per-program),
+    # not the MCP server — this is the authoritative number behind the
+    # dashboard's Spend tile. It breaks down as:
+    #   spend = paid + paid_off_platform + awaiting + tracking
+    # base_creator_payouts is get_analytics_overview's totalEarnings, which
+    # is identical to this endpoint's "paid" field (both ~$53,535) — kept as
+    # its own field since it comes from a different endpoint.
     total_views: int = 0
     total_creators: int = 0
     total_posts: int = 0
@@ -61,9 +54,12 @@ class CampaignMetrics:
     total_shares: int = 0
     engagement_rate: float = 0.0
     base_creator_payouts: float = 0.0
-    bonus_payouts: float = 0.0
+    paid: float = 0.0
+    paid_off_platform: float = 0.0
+    awaiting: float = 0.0
+    tracking: float = 0.0
     total_spend: float = 0.0
-    cpm: float = 0.0       # total_spend based (dashboard's definition, but won't match)
+    cpm: float = 0.0       # total_spend based — matches the dashboard's CPM tile
     base_cpm: float = 0.0  # base_creator_payouts based only
     top_creators: list = field(default_factory=list)  # [{"name": str, "views": int}]
 
@@ -130,33 +126,26 @@ def _count_posts_with_view_data(session, program_id: str) -> int:
     return count
 
 
-def _fetch_campaign_bonus_total(session, program_id: str) -> float:
+def _fetch_spend_report(program_id: str) -> dict:
     """
-    list_payouts has no program_id filter param, but every returned record
-    carries its own "programId" field, so we page through the full workspace
-    ledger (all campaigns) and sum client-side for just this one. Every
-    record observed so far is a "Canvas post bonus charge" debit; the
-    "bonus" substring check is there so a future non-bonus ledger entry type
-    doesn't silently get miscounted as a bonus.
+    Spend isn't exposed by the MCP server at all — it's a separate plain
+    REST endpoint, authenticated with the same API key but as an
+    "x-api-key" header instead of the MCP session's Bearer token.
+    https://docs.launchpointhq.com/api-reference/v1/payouts/report-creator-spend-per-program
     """
-    total = 0.0
-    page = 1
-    while True:
-        result = session.call_tool("list_payouts", {"limit": 200, "page": page})
-        payload = _mcp_json(result)
-        rows = payload.get("data", [])
-        if not rows:
-            break
-        for row in rows:
-            if row.get("programId") != program_id:
-                continue
-            if "bonus" in (row.get("description") or "").lower():
-                total += abs(row.get("amount", 0) or 0)
-        page_count = len(rows)
-        if page_count < 200:  # short page means this was the last one
-            break
-        page += 1
-    return total
+    from urllib.parse import urlparse
+
+    parsed = urlparse(MCP_URL)
+    url = f"{parsed.scheme}://{parsed.netloc}/api/v1/payouts/spend"
+    resp = requests.get(
+        url,
+        headers={"x-api-key": API_KEY, "Accept": "application/json"},
+        params={"programId": program_id},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    rows = resp.json().get("data", [])
+    return rows[0] if rows else {}
 
 
 def fetch_via_mcp() -> CampaignMetrics:
@@ -191,8 +180,13 @@ def fetch_via_mcp() -> CampaignMetrics:
     )
 
     base_creator_payouts = float(summary.get("totalEarnings", 0))
-    bonus_payouts = _fetch_campaign_bonus_total(session, CAMPAIGN_ID)
-    total_spend = base_creator_payouts + bonus_payouts
+
+    spend_report = _fetch_spend_report(CAMPAIGN_ID)
+    paid = float(spend_report.get("paid", 0))
+    paid_off_platform = float(spend_report.get("paidOffPlatform", 0))
+    awaiting = float(spend_report.get("awaiting", 0))
+    tracking = float(spend_report.get("tracking", 0))
+    total_spend = float(spend_report.get("spend", paid + paid_off_platform + awaiting + tracking))
 
     return CampaignMetrics(
         total_views=total_views,
@@ -203,7 +197,10 @@ def fetch_via_mcp() -> CampaignMetrics:
         total_shares=total_shares,
         engagement_rate=engagement_rate,
         base_creator_payouts=base_creator_payouts,
-        bonus_payouts=bonus_payouts,
+        paid=paid,
+        paid_off_platform=paid_off_platform,
+        awaiting=awaiting,
+        tracking=tracking,
         total_spend=total_spend,
         cpm=round(total_spend / total_views * 1000, 2) if total_views else 0.0,
         base_cpm=round(base_creator_payouts / total_views * 1000, 2) if total_views else 0.0,

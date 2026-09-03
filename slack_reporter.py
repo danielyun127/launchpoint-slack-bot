@@ -46,7 +46,6 @@ def build_blocks(metrics: CampaignMetrics, deltas: dict) -> list:
             "fields": [
                 {"type": "mrkdwn", "text": f"*Total Spend Added*\n{_signed_money(deltas['total_spend'])}"},
                 {"type": "mrkdwn", "text": f"*Base Payouts Added*\n{_signed_money(deltas['base_creator_payouts'])}"},
-                {"type": "mrkdwn", "text": f"*Bonus Payouts Added*\n{_signed_money(deltas['bonus_payouts'])}"},
                 {"type": "mrkdwn", "text": f"*CPM*\n${metrics.cpm:,.2f}"},
                 {"type": "mrkdwn", "text": f"*Base CPM*\n${metrics.base_cpm:,.2f}"},
             ],
@@ -73,7 +72,6 @@ def build_blocks(metrics: CampaignMetrics, deltas: dict) -> list:
             "fields": [
                 {"type": "mrkdwn", "text": f"*Total Spend*\n${metrics.total_spend:,.2f}"},
                 {"type": "mrkdwn", "text": f"*Base Creator Payouts*\n${metrics.base_creator_payouts:,.2f}"},
-                {"type": "mrkdwn", "text": f"*Bonuses*\n${metrics.bonus_payouts:,.2f}"},
                 {"type": "mrkdwn", "text": f"*CPM*\n${metrics.cpm:,.2f}"},
                 {"type": "mrkdwn", "text": f"*Base CPM*\n${metrics.base_cpm:,.2f}"},
             ],
@@ -81,7 +79,7 @@ def build_blocks(metrics: CampaignMetrics, deltas: dict) -> list:
         {
             "type": "context",
             "elements": [
-                {"type": "mrkdwn", "text": "_Views, Likes, Comments, Shares, Posts, and Engagement Rate match the LaunchPoint dashboard. Total Spend/Bonuses/CPM do not — no LaunchPoint API exposes the dashboard's spend aggregation for a single campaign. Base Creator Payouts = confirmed post earnings; Bonuses = this campaign's \"Canvas post bonus charge\" ledger entries (real, but a different total than the dashboard's bonus figure)._"},
+                {"type": "mrkdwn", "text": "_Total Spend/CPM now come from LaunchPoint's payouts/spend endpoint and match the dashboard. Base Creator Payouts/Base CPM are confirmed post earnings only (a subset of Total Spend — the rest is paid off-platform, awaiting payout, or still tracking)._"},
             ],
         },
         {"type": "divider"},

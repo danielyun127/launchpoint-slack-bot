@@ -36,7 +36,10 @@ def save_snapshot(metrics: CampaignMetrics) -> None:
         "total_shares": metrics.total_shares,
         "engagement_rate": metrics.engagement_rate,
         "base_creator_payouts": metrics.base_creator_payouts,
-        "bonus_payouts": metrics.bonus_payouts,
+        "paid": metrics.paid,
+        "paid_off_platform": metrics.paid_off_platform,
+        "awaiting": metrics.awaiting,
+        "tracking": metrics.tracking,
         "total_spend": metrics.total_spend,
         "cpm": metrics.cpm,
         "base_cpm": metrics.base_cpm,
@@ -58,7 +61,7 @@ def compute_deltas(today: CampaignMetrics, previous: dict | None) -> dict:
     if previous is None:
         return {
             "views": 0, "creators": 0, "posts": 0,
-            "total_spend": 0.0, "base_creator_payouts": 0.0, "bonus_payouts": 0.0,
+            "total_spend": 0.0, "base_creator_payouts": 0.0,
         }
     return {
         "views": today.total_views - int(previous.get("total_views", 0)),
@@ -66,5 +69,4 @@ def compute_deltas(today: CampaignMetrics, previous: dict | None) -> dict:
         "posts": today.total_posts - int(previous.get("total_posts", 0)),
         "total_spend": today.total_spend - float(previous.get("total_spend", 0.0)),
         "base_creator_payouts": today.base_creator_payouts - float(previous.get("base_creator_payouts", 0.0)),
-        "bonus_payouts": today.bonus_payouts - float(previous.get("bonus_payouts", 0.0)),
     }
