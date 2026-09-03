@@ -7,15 +7,7 @@ SLACK_WEBHOOK_URL = os.environ["SLACK_WEBHOOK_URL"]
 CLIENT_NAME = os.environ.get("CLIENT_NAME", "Client")
 
 
-def _signed_int(n: int) -> str:
-    return f"+{n:,}" if n >= 0 else f"-{abs(n):,}"
-
-
-def _signed_money(n: float) -> str:
-    return f"+${n:,.2f}" if n >= 0 else f"-${abs(n):,.2f}"
-
-
-def build_blocks(metrics: CampaignMetrics, deltas: dict) -> list:
+def build_blocks(metrics: CampaignMetrics) -> list:
     today = datetime.date.today().strftime("%b %d, %Y")
 
     top_creators_text = "\n".join(
@@ -26,31 +18,8 @@ def build_blocks(metrics: CampaignMetrics, deltas: dict) -> list:
     return [
         {
             "type": "header",
-            "text": {"type": "plain_text", "text": f"📊 {CLIENT_NAME} — Daily Campaign Report ({today})"},
+            "text": {"type": "plain_text", "text": f"📊 {CLIENT_NAME} — Campaign Report ({today})"},
         },
-        {
-            "type": "section",
-            "text": {"type": "mrkdwn", "text": "*Today*"},
-        },
-        {
-            "type": "section",
-            "fields": [
-                {"type": "mrkdwn", "text": f"*Views Gained*\n{_signed_int(deltas['views'])}"},
-                {"type": "mrkdwn", "text": f"*Creators Δ*\n{_signed_int(deltas['creators'])}"},
-                {"type": "mrkdwn", "text": f"*Posts Added*\n{_signed_int(deltas['posts'])}"},
-                {"type": "mrkdwn", "text": f"*Engagement Rate*\n{metrics.engagement_rate}%"},
-            ],
-        },
-        {
-            "type": "section",
-            "fields": [
-                {"type": "mrkdwn", "text": f"*Total Spend Added*\n{_signed_money(deltas['total_spend'])}"},
-                {"type": "mrkdwn", "text": f"*Base Payouts Added*\n{_signed_money(deltas['base_creator_payouts'])}"},
-                {"type": "mrkdwn", "text": f"*CPM*\n${metrics.cpm:,.2f}"},
-                {"type": "mrkdwn", "text": f"*Base CPM*\n${metrics.base_cpm:,.2f}"},
-            ],
-        },
-        {"type": "divider"},
         {
             "type": "section",
             "text": {"type": "mrkdwn", "text": "*Campaign Totals (All-Time)*"},
@@ -90,7 +59,7 @@ def build_blocks(metrics: CampaignMetrics, deltas: dict) -> list:
     ]
 
 
-def send_report(metrics: CampaignMetrics, deltas: dict) -> None:
-    payload = {"blocks": build_blocks(metrics, deltas)}
+def send_report(metrics: CampaignMetrics) -> None:
+    payload = {"blocks": build_blocks(metrics)}
     resp = requests.post(SLACK_WEBHOOK_URL, json=payload, timeout=15)
     resp.raise_for_status()
