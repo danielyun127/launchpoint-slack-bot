@@ -25,7 +25,7 @@ def _dollars(n: float) -> str:
 
 def _progress_bar(pct: float, length: int = PROGRESS_BAR_LENGTH) -> str:
     filled = max(0, min(length, round(pct / 100 * length)))
-    return "▓" * filled + "░" * (length - filled)
+    return "🟩" * filled + "⬜" * (length - filled)
 
 
 def _budget_line(total_spend: float) -> str:
