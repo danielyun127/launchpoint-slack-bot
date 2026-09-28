@@ -6,14 +6,49 @@ from launchpoint_client import CampaignMetrics
 SLACK_WEBHOOK_URL = os.environ["SLACK_WEBHOOK_URL"]
 CLIENT_NAME = os.environ.get("CLIENT_NAME", "Client")
 
+PROGRESS_BAR_LENGTH = 10
+
+
+def _abbreviate(n: float) -> str:
+    """1234 -> '1.2K', 63900000 -> '63.9M'"""
+    n = float(n)
+    if abs(n) >= 1_000_000:
+        return f"{n / 1_000_000:.1f}M"
+    if abs(n) >= 1_000:
+        return f"{n / 1_000:.1f}K"
+    return f"{n:,.0f}"
+
+
+def _dollars(n: float) -> str:
+    return f"${n:,.0f}"
+
+
+def _progress_bar(pct: float, length: int = PROGRESS_BAR_LENGTH) -> str:
+    filled = max(0, min(length, round(pct / 100 * length)))
+    return "▓" * filled + "░" * (length - filled)
+
+
+def _budget_line(total_spend: float) -> str:
+    budget_raw = os.environ.get("KREA_TOTAL_BUDGET", "").strip()
+    if not budget_raw:
+        return f"💰 Spend: {_dollars(total_spend)}"
+
+    budget = float(budget_raw)
+    pct = round(total_spend / budget * 100) if budget else 0
+    bar = _progress_bar(pct)
+    return f"💰 Budget: {_dollars(total_spend)} / {_dollars(budget)} spent ({pct}%)\n{bar}"
+
 
 def build_blocks(metrics: CampaignMetrics) -> list:
     today = datetime.date.today().strftime("%b %d, %Y")
 
-    top_creators_text = "\n".join(
-        f"  {i+1}. {c['name']} — {c['views']:,} views"
-        for i, c in enumerate(metrics.top_creators)
-    ) or "  _no creator data available_"
+    if metrics.top_creators_7d:
+        top_creators_text = "\n".join(
+            f"  {i+1}. {c['name']} — {_abbreviate(c['views'])} views"
+            for i, c in enumerate(metrics.top_creators_7d)
+        )
+    else:
+        top_creators_text = "  _No new posts this week_"
 
     return [
         {
@@ -22,39 +57,30 @@ def build_blocks(metrics: CampaignMetrics) -> list:
         },
         {
             "type": "section",
-            "text": {"type": "mrkdwn", "text": "*Campaign Totals (All-Time)*"},
+            "text": {"type": "mrkdwn", "text": _budget_line(metrics.total_spend)},
         },
         {
             "type": "section",
-            "fields": [
-                {"type": "mrkdwn", "text": f"*Total Views*\n{metrics.total_views:,}"},
-                {"type": "mrkdwn", "text": f"*Active Creators*\n{metrics.total_creators:,}"},
-                {"type": "mrkdwn", "text": f"*Total Posts*\n{metrics.total_posts:,}"},
-                {"type": "mrkdwn", "text": f"*Total Likes*\n{metrics.total_likes:,}"},
-                {"type": "mrkdwn", "text": f"*Total Comments*\n{metrics.total_comments:,}"},
-                {"type": "mrkdwn", "text": f"*Total Shares*\n{metrics.total_shares:,}"},
-                {"type": "mrkdwn", "text": f"*Engagement Rate*\n{metrics.engagement_rate}%"},
-            ],
+            "text": {
+                "type": "mrkdwn",
+                "text": (
+                    f"👁 {_abbreviate(metrics.total_views)} views · "
+                    f"📝 {_abbreviate(metrics.total_posts)} posts · "
+                    f"👥 {metrics.total_creators:,} active creators"
+                ),
+            },
         },
         {
             "type": "section",
-            "fields": [
-                {"type": "mrkdwn", "text": f"*Total Spend*\n${metrics.total_spend:,.2f}"},
-                {"type": "mrkdwn", "text": f"*Base Creator Payouts*\n${metrics.base_creator_payouts:,.2f}"},
-                {"type": "mrkdwn", "text": f"*CPM*\n${metrics.cpm:,.2f}"},
-                {"type": "mrkdwn", "text": f"*Base CPM*\n${metrics.base_cpm:,.2f}"},
-            ],
-        },
-        {
-            "type": "context",
-            "elements": [
-                {"type": "mrkdwn", "text": "_Total Spend/CPM now come from LaunchPoint's payouts/spend endpoint and match the dashboard. Base Creator Payouts/Base CPM are confirmed post earnings only (a subset of Total Spend — the rest is paid off-platform, awaiting payout, or still tracking)._"},
-            ],
+            "text": {
+                "type": "mrkdwn",
+                "text": f"${metrics.cpm:,.2f} CPM · {metrics.engagement_rate}% engagement rate",
+            },
         },
         {"type": "divider"},
         {
             "type": "section",
-            "text": {"type": "mrkdwn", "text": f"*Top Creators (All-Time)*\n{top_creators_text}"},
+            "text": {"type": "mrkdwn", "text": f"*🏆 Top Creators (Last 7 Days)*\n{top_creators_text}"},
         },
     ]
 

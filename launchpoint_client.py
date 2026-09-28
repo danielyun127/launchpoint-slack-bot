@@ -17,6 +17,7 @@ Three modes, picked automatically based on env vars:
 """
 
 import os
+import datetime
 import requests
 from dataclasses import dataclass, field
 
@@ -62,6 +63,7 @@ class CampaignMetrics:
     cpm: float = 0.0       # total_spend based — matches the dashboard's CPM tile
     base_cpm: float = 0.0  # base_creator_payouts based only
     top_creators: list = field(default_factory=list)  # [{"name": str, "views": int}]
+    top_creators_7d: list = field(default_factory=list)  # same shape, views in the last 7 days only
 
 
 # Creators excluded from the "Top Creators" report list (case-insensitive name match).
@@ -148,6 +150,28 @@ def _fetch_spend_report(program_id: str) -> dict:
     return rows[0] if rows else {}
 
 
+def _fetch_top_creators_7d(session, program_id: str) -> list:
+    """
+    get_analytics_overview filters by post publish date when from_date/to_date
+    are given, and its topCreators for that filtered window is already sorted
+    by views — exactly the trailing-7-day ranking we need.
+    """
+    today = datetime.date.today()
+    week_ago = today - datetime.timedelta(days=7)
+    result = session.call_tool(
+        "get_analytics_overview",
+        {
+            "program_id": program_id,
+            "from_date": week_ago.isoformat(),
+            "to_date": today.isoformat(),
+        },
+    )
+    payload = _mcp_json(result)
+    data = payload.get("data", payload)
+    creators = sorted(_filter_creators(data.get("topCreators", [])), key=lambda c: c.get("views", 0), reverse=True)
+    return [{"name": c.get("name", "?"), "views": int(c.get("views", 0))} for c in creators[:3]]
+
+
 def fetch_via_mcp() -> CampaignMetrics:
     """
     Calls LaunchPoint's MCP tool `get_analytics_overview`, scoped to our
@@ -208,6 +232,7 @@ def fetch_via_mcp() -> CampaignMetrics:
             {"name": c.get("name", "?"), "views": int(c.get("views", 0))}
             for c in sorted(_filter_creators(data.get("topCreators", [])), key=lambda c: c.get("views", 0), reverse=True)[:5]
         ],
+        top_creators_7d=_fetch_top_creators_7d(session, CAMPAIGN_ID),
     )
 
 

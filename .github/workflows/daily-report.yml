@@ -32,4 +32,5 @@ jobs:
           LAUNCHPOINT_CAMPAIGN_ID: ${{ secrets.LAUNCHPOINT_CAMPAIGN_ID }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           CLIENT_NAME: ${{ secrets.CLIENT_NAME }}
+          KREA_TOTAL_BUDGET: ${{ secrets.KREA_TOTAL_BUDGET }}
         run: python main.py
