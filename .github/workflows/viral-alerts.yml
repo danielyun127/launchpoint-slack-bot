@@ -36,7 +36,6 @@ jobs:
           LAUNCHPOINT_CAMPAIGN_ID: ${{ secrets.LAUNCHPOINT_CAMPAIGN_ID }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           ALERT_START_DATE: ${{ vars.ALERT_START_DATE }}
-          VIRAL_THRESHOLD: ${{ vars.VIRAL_THRESHOLD }}
         run: python viral_alerts.py
 
       - name: Commit alerted_posts.json

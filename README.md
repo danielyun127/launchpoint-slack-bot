@@ -74,13 +74,16 @@ python main.py --schedule  # runs forever, fires every Monday 9am
 ## Viral video alerts
 
 ```bash
-python viral_alerts.py     # alerts once per video posted on/after ALERT_START_DATE with VIRAL_THRESHOLD+ views
+python viral_alerts.py          # alerts when a video posted on/after ALERT_START_DATE crosses a view milestone
+python viral_alerts.py --test   # posts one [TEST] alert to preview the design (not recorded)
 ```
 
-Already-alerted post IDs live in `alerted_posts.json`. The `Viral Video Alerts`
-GitHub Actions workflow runs this every 3 hours (or manually from the Actions tab)
-and commits the updated file back to the repo. To override the defaults there, set
-`ALERT_START_DATE` / `VIRAL_THRESHOLD` as repository *variables* (not secrets).
+Milestones are 100K, 250K, 500K, 750K, 1M, 2M, 3M, 4M and 5M views; nothing alerts
+past 5M. If a video jumps several milestones between runs, only the highest one alerts.
+`alerted_posts.json` maps each post ID to the highest milestone already alerted.
+The `Viral Video Alerts` GitHub Actions workflow runs this every 3 hours (or manually
+from the Actions tab) and commits the updated file back to the repo. To override
+`ALERT_START_DATE` there, set it as a repository *variable* (not a secret).
 
 ## Deploying so it actually runs weekly without your laptop being on
 
