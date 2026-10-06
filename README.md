@@ -71,6 +71,17 @@ python main.py             # sends one report immediately — use this to test
 python main.py --schedule  # runs forever, fires every Monday 9am
 ```
 
+## Viral video alerts
+
+```bash
+python viral_alerts.py     # alerts once per video posted on/after ALERT_START_DATE with VIRAL_THRESHOLD+ views
+```
+
+Already-alerted post IDs live in `alerted_posts.json`. The `Viral Video Alerts`
+GitHub Actions workflow runs this every 3 hours (or manually from the Actions tab)
+and commits the updated file back to the repo. To override the defaults there, set
+`ALERT_START_DATE` / `VIRAL_THRESHOLD` as repository *variables* (not secrets).
+
 ## Deploying so it actually runs weekly without your laptop being on
 
 Pick one:

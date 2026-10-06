@@ -1,0 +1,55 @@
+name: Viral Video Alerts
+
+on:
+  schedule:
+    - cron: "0 */3 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+# Never run two at once — overlapping runs could both alert the same post
+# before either commits alerted_posts.json.
+concurrency:
+  group: viral-alerts
+  cancel-in-progress: false
+
+jobs:
+  check-viral:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Send viral alerts
+        env:
+          LAUNCHPOINT_MCP_URL: ${{ secrets.LAUNCHPOINT_MCP_URL }}
+          LAUNCHPOINT_API_KEY: ${{ secrets.LAUNCHPOINT_API_KEY }}
+          LAUNCHPOINT_CAMPAIGN_ID: ${{ secrets.LAUNCHPOINT_CAMPAIGN_ID }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          ALERT_START_DATE: ${{ vars.ALERT_START_DATE }}
+          VIRAL_THRESHOLD: ${{ vars.VIRAL_THRESHOLD }}
+        run: python viral_alerts.py
+
+      - name: Commit alerted_posts.json
+        # Run even if the alert step failed partway, so alerts that did go out are recorded.
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898333+github-actions[bot]@users.noreply.github.com"
+          git add alerted_posts.json
+          if git diff --cached --quiet; then
+            echo "No new alerts to record."
+          else
+            git commit -m "Record viral alerts [skip ci]"
+            git pull --rebase
+            git push
+          fi
