@@ -94,7 +94,23 @@ def _micro1() -> ClientConfig:
     )
 
 
-CLIENTS = {"krea": _krea, "micro1": _micro1}
+def _tab() -> ClientConfig:
+    return ClientConfig(
+        key="tab",
+        name="Tab",
+        campaign_id=_required("TAB_CAMPAIGN_ID"),
+        slack_webhook_url=_required("TAB_SLACK_WEBHOOK_URL"),
+        total_budget="",
+        video_goal=int(_env("TAB_VIDEO_GOAL", "750")),
+        min_views=int(_env("TAB_MIN_VIEWS", "1000")),
+        excluded_creators=set(),
+        alerts_state_file=os.path.join(BASE_DIR, "alerted_posts_tab.json"),
+        alert_start_date=_date("TAB_ALERT_START_DATE", "2026-10-13"),
+        features={DAILY_REPORT, MILESTONE_ALERTS},
+    )
+
+
+CLIENTS = {"krea": _krea, "micro1": _micro1, "tab": _tab}
 
 
 def get_client(key: str) -> ClientConfig:

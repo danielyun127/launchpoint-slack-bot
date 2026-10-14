@@ -17,7 +17,7 @@ jobs:
       # Each client is its own job, so one failing doesn't stop the other.
       fail-fast: false
       matrix:
-        client: [krea, micro1]
+        client: [krea, micro1, tab]
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
@@ -42,6 +42,10 @@ jobs:
           MICRO1_SLACK_WEBHOOK_URL: ${{ secrets.MICRO1_SLACK_WEBHOOK_URL }}
           MICRO1_VIDEO_GOAL: ${{ vars.MICRO1_VIDEO_GOAL }}
           MICRO1_MIN_VIEWS: ${{ vars.MICRO1_MIN_VIEWS }}
+          TAB_CAMPAIGN_ID: ${{ secrets.TAB_CAMPAIGN_ID }}
+          TAB_SLACK_WEBHOOK_URL: ${{ secrets.TAB_SLACK_WEBHOOK_URL }}
+          TAB_VIDEO_GOAL: ${{ vars.TAB_VIDEO_GOAL }}
+          TAB_MIN_VIEWS: ${{ vars.TAB_MIN_VIEWS }}
           MICRO1_SLACK_BOT_TOKEN: ${{ secrets.MICRO1_SLACK_BOT_TOKEN }}
           MICRO1_SLACK_CHANNEL_ID: ${{ secrets.MICRO1_SLACK_CHANNEL_ID }}
         run: python main.py --client ${{ matrix.client }}
