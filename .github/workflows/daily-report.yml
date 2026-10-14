@@ -13,6 +13,11 @@ on:
 jobs:
   send-report:
     runs-on: ubuntu-latest
+    strategy:
+      # Each client is its own job, so one failing doesn't stop the other.
+      fail-fast: false
+      matrix:
+        client: [krea, micro1]
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
@@ -33,4 +38,10 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           CLIENT_NAME: ${{ secrets.CLIENT_NAME }}
           KREA_TOTAL_BUDGET: ${{ secrets.KREA_TOTAL_BUDGET }}
-        run: python main.py
+          MICRO1_CAMPAIGN_ID: ${{ secrets.MICRO1_CAMPAIGN_ID }}
+          MICRO1_SLACK_WEBHOOK_URL: ${{ secrets.MICRO1_SLACK_WEBHOOK_URL }}
+          MICRO1_VIDEO_GOAL: ${{ vars.MICRO1_VIDEO_GOAL }}
+          MICRO1_MIN_VIEWS: ${{ vars.MICRO1_MIN_VIEWS }}
+          MICRO1_SLACK_BOT_TOKEN: ${{ secrets.MICRO1_SLACK_BOT_TOKEN }}
+          MICRO1_SLACK_CHANNEL_ID: ${{ secrets.MICRO1_SLACK_CHANNEL_ID }}
+        run: python main.py --client ${{ matrix.client }}

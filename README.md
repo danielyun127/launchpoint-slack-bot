@@ -64,26 +64,64 @@ CSS selectors in `launchpoint_client.py` → `fetch_via_scrape()`:
 Scraping is inherently brittle — if LaunchPoint changes their frontend, the
 selectors break. The API route in Option A survives redesigns much better.
 
+## Clients
+
+Each client (Krea, micro1) has its own config in `clients.py`: name, LaunchPoint
+campaign ID, Slack webhook, total budget, creator exclusions, alerts state file,
+alert start date, and which features are on. Krea keeps its original env var
+names; micro1 uses `MICRO1_*` (see `.env.example`).
+
+| Feature | Krea | micro1 |
+|---|---|---|
+| Daily report | on | on |
+| Report goal line | 💰 budget (`KREA_TOTAL_BUDGET`) | 🎬 unique videos (`MICRO1_VIDEO_GOAL`, default 600) |
+| Milestone alerts | on (`alerted_posts.json`) | on (`alerted_posts_micro1.json`) |
+| Daily posts digest | off | on |
+
+micro1's video goal counts unique videos, not posts: one video cross-posted to
+TikTok, Instagram, YouTube and Facebook counts once (`unique_videos.py` groups posts by
+LaunchPoint's `crossPostGroupId`, splits same-platform repeats, and merges groups from
+the same creator posted within 15 minutes). A video counts toward the goal once any of
+its posts reaches `MICRO1_MIN_VIEWS` (default 1000) views. Like the posts count, it only
+considers posts with view data.
+
+Every command takes `--client krea`, `--client micro1`, or `--client all`, and
+defaults to Krea.
+
 ## Running
 
 ```bash
-python main.py             # sends one report immediately — use this to test
-python main.py --schedule  # runs forever, fires every Monday 9am
+python main.py                   # sends Krea's report immediately — use this to test
+python main.py --client micro1   # micro1's report, followed by its posts digest
+python main.py --schedule        # runs forever, fires every Monday 9am
 ```
+
+### Daily posts digest (micro1)
+
+After micro1's daily report, the bot posts links to every video posted yesterday
+(full day, Pacific time), grouped by creator, split across messages if it's long.
+Slack webhooks can't reply in a thread, so the digest only threads under the report
+when `MICRO1_SLACK_BOT_TOKEN` and `MICRO1_SLACK_CHANNEL_ID` are set (a bot with
+`chat:write`, invited to the channel). Without them it posts as a separate message
+right after the report.
 
 ## Viral video alerts
 
 ```bash
-python viral_alerts.py          # alerts when a video posted on/after ALERT_START_DATE crosses a view milestone
-python viral_alerts.py --test   # posts one [TEST] alert to preview the design (not recorded)
+python viral_alerts.py --client all   # alerts when a video posted on/after the alert start date crosses a view milestone
+python viral_alerts.py --test         # posts one [TEST] alert to preview the design (not recorded)
 ```
 
 Milestones are 100K, 250K, 500K, 750K, 1M, 2M, 3M, 4M and 5M views; nothing alerts
 past 5M. If a video jumps several milestones between runs, only the highest one alerts.
-`alerted_posts.json` maps each post ID to the highest milestone already alerted.
+Each client's state file maps post ID to the highest milestone already alerted.
 The `Viral Video Alerts` GitHub Actions workflow runs this every 3 hours (or manually
-from the Actions tab) and commits the updated file back to the repo. To override
-`ALERT_START_DATE` there, set it as a repository *variable* (not a secret).
+from the Actions tab) and commits the updated file back to the repo. Alert start dates default to
+2026-10-05 for Krea and 2026-10-13 for micro1; to override them there, set
+`ALERT_START_DATE` / `MICRO1_ALERT_START_DATE` as repository *variables* (not secrets).
+
+Both workflows run each client as a separate job, so one client failing doesn't
+stop the other.
 
 ## Deploying so it actually runs weekly without your laptop being on
 

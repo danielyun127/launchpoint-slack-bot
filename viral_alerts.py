@@ -1,19 +1,21 @@
 """
-Posts a Slack alert when a Krea campaign video crosses a view milestone
+Posts a Slack alert when a client's campaign video crosses a view milestone
 (100K, 250K, 500K, 750K, 1M, 2M, 3M, 4M, 5M), for videos posted on or after
-ALERT_START_DATE (Pacific time). alerted_posts.json maps each post ID to the
-highest milestone already alerted, so each milestone only alerts once.
+the client's alert start date (Pacific time). Each client's alerts state file
+maps post ID to the highest milestone already alerted, so each milestone only
+alerts once.
 
 Usage:
-    python viral_alerts.py          # check for new milestones and alert
-    python viral_alerts.py --test   # post one [TEST] alert for the William Pham
-                                    # reel at 250K, without recording it
+    python viral_alerts.py                          # Krea (or --client micro1 / all)
+    python viral_alerts.py --test [--client micro1] # post one [TEST] card, not recorded
+                                                    # (Krea: the William Pham reel at 250K;
+                                                    # others: the client's top post)
 """
 
-import os
 import sys
 import json
 import datetime
+import traceback
 from zoneinfo import ZoneInfo
 
 import requests
@@ -21,11 +23,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from clients import ClientConfig, get_client, client_keys_from_argv, MILESTONE_ALERTS
 from mcp_client import get_session
-from launchpoint_client import CAMPAIGN_ID, EXCLUDED_CREATOR_NAMES, _mcp_json
+from launchpoint_client import fetch_all_posts, fetch_posts_published_since
+from slack_client import post_message
 
-SLACK_WEBHOOK_URL = os.environ["SLACK_WEBHOOK_URL"]
-ALERT_START_DATE = datetime.date.fromisoformat(os.environ.get("ALERT_START_DATE", "").strip() or "2026-10-05")
 PACIFIC = ZoneInfo("America/Los_Angeles")
 
 MILESTONES = [100_000, 250_000, 500_000, 750_000, 1_000_000, 2_000_000, 3_000_000, 4_000_000, 5_000_000]
@@ -39,22 +41,18 @@ PLATFORM_NAMES = {
     "snapchat": "Snapchat",
 }
 
-ALERTED_POSTS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "alerted_posts.json")
 
-TEST_POST_URL = "https://www.instagram.com/reel/DeHBpe8KvBy/"
-
-
-def _load_alerted() -> dict:
+def _load_alerted(client: ClientConfig) -> dict:
     """{post_id: highest milestone already alerted}"""
     try:
-        with open(ALERTED_POSTS_PATH) as f:
+        with open(client.alerts_state_file) as f:
             return json.load(f)
     except FileNotFoundError:
         return {}
 
 
-def _save_alerted(alerted: dict) -> None:
-    with open(ALERTED_POSTS_PATH, "w") as f:
+def _save_alerted(client: ClientConfig, alerted: dict) -> None:
+    with open(client.alerts_state_file, "w") as f:
         json.dump(alerted, f, indent=2, sort_keys=True)
         f.write("\n")
 
@@ -62,29 +60,6 @@ def _save_alerted(alerted: dict) -> None:
 def _highest_milestone(views: int) -> int:
     """Highest milestone at or below views, or 0 if under the first one."""
     return max((m for m in MILESTONES if views >= m), default=0)
-
-
-def _fetch_posts_since(session, start_date: datetime.date) -> list:
-    """
-    list_posts' from_date filters on publish date, but appears to compare in
-    UTC — a post made the evening before start_date in Pacific is already
-    start_date in UTC. Ask for one extra day and apply the exact Pacific
-    cutoff against uploadedAt ourselves.
-    """
-    from_date = (start_date - datetime.timedelta(days=1)).isoformat()
-    posts = []
-    page = 1
-    while True:
-        payload = _mcp_json(session.call_tool(
-            "list_posts",
-            {"program_ids": [CAMPAIGN_ID], "from_date": from_date, "limit": 500, "page": page},
-        ))
-        rows = payload.get("data", [])
-        posts.extend(rows)
-        if not rows or page >= payload.get("totalPages", 1):
-            break
-        page += 1
-    return posts
 
 
 def _build_attachment(post: dict, milestone: int, test: bool = False, include_image: bool = True) -> dict:
@@ -135,31 +110,25 @@ def _build_attachment(post: dict, milestone: int, test: bool = False, include_im
     }
 
 
-def _send_alert(post: dict, milestone: int, test: bool = False) -> None:
+def _send_alert(client: ClientConfig, post: dict, milestone: int, test: bool = False) -> None:
     fallback = f"🚀 {post['contractorName']} hit {milestone:,} views"
-    resp = requests.post(
-        SLACK_WEBHOOK_URL,
-        json={"text": fallback, "attachments": [_build_attachment(post, milestone, test)]},
-        timeout=15,
-    )
-    if not resp.ok and post.get("thumbnail"):
+    try:
+        post_message(client, {"text": fallback, "attachments": [_build_attachment(post, milestone, test)]})
+    except (requests.HTTPError, RuntimeError) as e:
+        if not post.get("thumbnail"):
+            raise
         # Slack rejects the whole message if it can't fetch the image accessory
         # (e.g. an expired thumbnail URL) — resend without it rather than drop the alert.
-        print(f"  Slack rejected the message ({resp.status_code} {resp.text}); retrying without thumbnail.")
-        resp = requests.post(
-            SLACK_WEBHOOK_URL,
-            json={"text": fallback, "attachments": [_build_attachment(post, milestone, test, include_image=False)]},
-            timeout=15,
-        )
-    resp.raise_for_status()
+        print(f"  Slack rejected the message ({e}); retrying without thumbnail.")
+        post_message(client, {"text": fallback, "attachments": [_build_attachment(post, milestone, test, include_image=False)]})
 
 
-def run() -> None:
-    cutoff_ms = int(datetime.datetime.combine(ALERT_START_DATE, datetime.time(), PACIFIC).timestamp() * 1000)
-    print(f"Checking posts on/after {ALERT_START_DATE} PT for new view milestones...")
+def run(client: ClientConfig) -> None:
+    cutoff_ms = int(datetime.datetime.combine(client.alert_start_date, datetime.time(), PACIFIC).timestamp() * 1000)
+    print(f"[{client.name}] Checking posts on/after {client.alert_start_date} PT for new view milestones...")
 
     session = get_session()
-    posts = _fetch_posts_since(session, ALERT_START_DATE)
+    posts = fetch_posts_published_since(session, client.campaign_id, client.alert_start_date)
 
     undated = [p for p in posts if not p.get("uploadedAt")]
     print(f"Fetched {len(posts)} posts; skipped {len(undated)} with no uploadedAt.")
@@ -168,12 +137,12 @@ def run() -> None:
             print(f"  WARNING: undated post over {MILESTONES[0]:,} views — {p.get('contractorName')} "
                   f"{p.get('views'):,} views {p.get('url')} (id {p.get('id')})")
 
-    alerted = _load_alerted()
+    alerted = _load_alerted(client)
     due = []
     for p in posts:
         if not p.get("uploadedAt") or p["uploadedAt"] < cutoff_ms:
             continue
-        if p.get("contractorName", "").strip().lower() in EXCLUDED_CREATOR_NAMES:
+        if p.get("contractorName", "").strip().lower() in client.excluded_creators:
             continue
         # If a post jumped several milestones between runs, only the highest is alerted.
         milestone = _highest_milestone(p.get("views") or 0)
@@ -181,24 +150,44 @@ def run() -> None:
             due.append((p, milestone))
 
     for p, milestone in sorted(due, key=lambda d: d[0]["views"], reverse=True):
-        _send_alert(p, milestone)
+        _send_alert(client, p, milestone)
         # Save after each alert so a failure mid-run doesn't re-alert the ones already sent.
         alerted[p["id"]] = milestone
-        _save_alerted(alerted)
+        _save_alerted(client, alerted)
         print(f"  Alerted: {p['contractorName']} — {milestone:,} milestone ({p['views']:,} views) {p['url']}")
 
     print(f"Done. {len(due)} new alert(s).")
 
 
-def run_test() -> None:
-    posts = _fetch_posts_since(get_session(), ALERT_START_DATE)
-    post = next(p for p in posts if p.get("url") == TEST_POST_URL)
-    _send_alert(post, 250_000, test=True)
-    print(f"Sent [TEST] alert: {post['contractorName']} — 250,000 milestone ({post['views']:,} views)")
+def run_test(client: ClientConfig) -> None:
+    session = get_session()
+    if client.test_post_url:
+        posts = fetch_posts_published_since(session, client.campaign_id, client.alert_start_date)
+        post = next(p for p in posts if p.get("url") == client.test_post_url)
+        milestone = 250_000
+    else:
+        post = max((p for p in fetch_all_posts(session, client.campaign_id) if p.get("uploadedAt")), key=lambda p: p.get("views") or 0)
+        # A sample card needs a milestone even if the top post hasn't reached one yet.
+        milestone = max(_highest_milestone(post["views"]), MILESTONES[0])
+    _send_alert(client, post, milestone, test=True)
+    print(f"[{client.name}] Sent [TEST] alert: {post['contractorName']} — {milestone:,} milestone ({post['views']:,} views)")
+
+
+def main() -> None:
+    failed = []
+    for key in client_keys_from_argv(sys.argv):
+        try:
+            client = get_client(key)
+            if "--test" in sys.argv:
+                run_test(client)
+            elif client.has(MILESTONE_ALERTS):
+                run(client)
+        except Exception:
+            traceback.print_exc()
+            failed.append(key)
+    if failed:
+        sys.exit(f"Failed for: {', '.join(failed)}")
 
 
 if __name__ == "__main__":
-    if "--test" in sys.argv:
-        run_test()
-    else:
-        run()
+    main()

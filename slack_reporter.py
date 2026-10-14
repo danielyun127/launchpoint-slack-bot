@@ -1,10 +1,7 @@
-import os
 import datetime
-import requests
 from launchpoint_client import CampaignMetrics
-
-SLACK_WEBHOOK_URL = os.environ["SLACK_WEBHOOK_URL"]
-CLIENT_NAME = os.environ.get("CLIENT_NAME", "Client")
+from clients import ClientConfig
+from slack_client import post_message
 
 PROGRESS_BAR_LENGTH = 10
 
@@ -28,8 +25,7 @@ def _progress_bar(pct: float, length: int = PROGRESS_BAR_LENGTH) -> str:
     return "🟩" * filled + "⬜" * (length - filled)
 
 
-def _budget_line(total_spend: float) -> str:
-    budget_raw = os.environ.get("KREA_TOTAL_BUDGET", "").strip()
+def _budget_line(total_spend: float, budget_raw: str) -> str:
     if not budget_raw:
         return f"💰 Spend: {_dollars(total_spend)}"
 
@@ -39,7 +35,21 @@ def _budget_line(total_spend: float) -> str:
     return f"💰 Budget: {_dollars(total_spend)} / {_dollars(budget)} spent ({pct}%)\n{bar}"
 
 
-def build_blocks(metrics: CampaignMetrics) -> list:
+def _video_goal_blocks(metrics: CampaignMetrics, client: ClientConfig) -> list:
+    goal = client.video_goal
+    pct = round(metrics.qualifying_videos / goal * 100)
+    return [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"🎬 Videos: {metrics.qualifying_videos:,} / {goal:,} ({pct}%)\n{_progress_bar(pct)}",
+            },
+        },
+    ]
+
+
+def build_blocks(metrics: CampaignMetrics, client: ClientConfig) -> list:
     today = datetime.date.today().strftime("%b %d, %Y")
 
     if metrics.top_creators_7d:
@@ -50,22 +60,31 @@ def build_blocks(metrics: CampaignMetrics) -> list:
     else:
         top_creators_text = "  _No new posts this week_"
 
+    if client.video_goal:
+        goal_blocks = _video_goal_blocks(metrics, client)
+    else:
+        goal_blocks = [{
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": _budget_line(metrics.total_spend, client.total_budget)},
+        }]
+
+    posts_text = f"📝 {_abbreviate(metrics.total_posts)} posts"
+    if client.video_goal:
+        posts_text += f" ({metrics.unique_videos:,} unique)"
+
     return [
         {
             "type": "header",
-            "text": {"type": "plain_text", "text": f"📊 {CLIENT_NAME} — Campaign Report ({today})"},
+            "text": {"type": "plain_text", "text": f"📊 {client.name} — Campaign Report ({today})"},
         },
-        {
-            "type": "section",
-            "text": {"type": "mrkdwn", "text": _budget_line(metrics.total_spend)},
-        },
+        *goal_blocks,
         {
             "type": "section",
             "text": {
                 "type": "mrkdwn",
                 "text": (
                     f"👁 {_abbreviate(metrics.total_views)} views · "
-                    f"📝 {_abbreviate(metrics.total_posts)} posts · "
+                    f"{posts_text} · "
                     f"👥 {metrics.total_creators:,} active creators"
                 ),
             },
@@ -85,7 +104,6 @@ def build_blocks(metrics: CampaignMetrics) -> list:
     ]
 
 
-def send_report(metrics: CampaignMetrics) -> None:
-    payload = {"blocks": build_blocks(metrics)}
-    resp = requests.post(SLACK_WEBHOOK_URL, json=payload, timeout=15)
-    resp.raise_for_status()
+def send_report(metrics: CampaignMetrics, client: ClientConfig) -> str:
+    """Returns the message ts when posted via the Web API (for threading), else None."""
+    return post_message(client, {"blocks": build_blocks(metrics, client)})

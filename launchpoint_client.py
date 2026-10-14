@@ -64,14 +64,17 @@ class CampaignMetrics:
     base_cpm: float = 0.0  # base_creator_payouts based only
     top_creators: list = field(default_factory=list)  # [{"name": str, "views": int}]
     top_creators_7d: list = field(default_factory=list)  # same shape, views in the last 7 days only
+    # Only filled for clients with a unique-video goal (see unique_videos.py).
+    unique_videos: int = 0
+    qualifying_videos: int = 0
 
 
 # Creators excluded from the "Top Creators" report list (case-insensitive name match).
 EXCLUDED_CREATOR_NAMES = {"simran batra"}
 
 
-def _filter_creators(creators: list) -> list:
-    return [c for c in creators if c.get("name", "").strip().lower() not in EXCLUDED_CREATOR_NAMES]
+def _filter_creators(creators: list, excluded: set = EXCLUDED_CREATOR_NAMES) -> list:
+    return [c for c in creators if c.get("name", "").strip().lower() not in excluded]
 
 
 def _to_number(text: str) -> float:
@@ -128,6 +131,43 @@ def _count_posts_with_view_data(session, program_id: str) -> int:
     return count
 
 
+def fetch_all_posts(session, campaign_id: str) -> list:
+    posts = []
+    page = 1
+    while True:
+        payload = _mcp_json(session.call_tool("list_posts", {"program_ids": [campaign_id], "limit": 500, "page": page}))
+        rows = payload.get("data", [])
+        posts.extend(rows)
+        if not rows or page >= payload.get("totalPages", 1):
+            break
+        page += 1
+    return posts
+
+
+def fetch_posts_published_since(session, campaign_id: str, start_date: datetime.date) -> list:
+    """
+    All posts published on/after start_date, plus a one-day buffer before it.
+    list_posts' from_date filters on publish date but appears to compare in
+    UTC — a post made the evening before start_date in Pacific is already
+    start_date in UTC — so callers apply the exact Pacific cutoff against
+    uploadedAt themselves.
+    """
+    from_date = (start_date - datetime.timedelta(days=1)).isoformat()
+    posts = []
+    page = 1
+    while True:
+        payload = _mcp_json(session.call_tool(
+            "list_posts",
+            {"program_ids": [campaign_id], "from_date": from_date, "limit": 500, "page": page},
+        ))
+        rows = payload.get("data", [])
+        posts.extend(rows)
+        if not rows or page >= payload.get("totalPages", 1):
+            break
+        page += 1
+    return posts
+
+
 def _fetch_spend_report(program_id: str) -> dict:
     """
     Spend isn't exposed by the MCP server at all — it's a separate plain
@@ -150,7 +190,7 @@ def _fetch_spend_report(program_id: str) -> dict:
     return rows[0] if rows else {}
 
 
-def _fetch_top_creators_7d(session, program_id: str) -> list:
+def _fetch_top_creators_7d(session, program_id: str, excluded: set = EXCLUDED_CREATOR_NAMES) -> list:
     """
     get_analytics_overview filters by post publish date when from_date/to_date
     are given, and its topCreators for that filtered window is already sorted
@@ -168,11 +208,11 @@ def _fetch_top_creators_7d(session, program_id: str) -> list:
     )
     payload = _mcp_json(result)
     data = payload.get("data", payload)
-    creators = sorted(_filter_creators(data.get("topCreators", [])), key=lambda c: c.get("views", 0), reverse=True)
+    creators = sorted(_filter_creators(data.get("topCreators", []), excluded), key=lambda c: c.get("views", 0), reverse=True)
     return [{"name": c.get("name", "?"), "views": int(c.get("views", 0))} for c in creators[:3]]
 
 
-def fetch_via_mcp() -> CampaignMetrics:
+def fetch_via_mcp(campaign_id: str = CAMPAIGN_ID, excluded: set = EXCLUDED_CREATOR_NAMES) -> CampaignMetrics:
     """
     Calls LaunchPoint's MCP tool `get_analytics_overview`, scoped to our
     campaign via `program_id` (LaunchPoint's internal name for a campaign).
@@ -183,7 +223,7 @@ def fetch_via_mcp() -> CampaignMetrics:
 
     result = session.call_tool(
         "get_analytics_overview",
-        {"program_id": CAMPAIGN_ID},
+        {"program_id": campaign_id},
     )
     payload = _mcp_json(result)
 
@@ -205,7 +245,7 @@ def fetch_via_mcp() -> CampaignMetrics:
 
     base_creator_payouts = float(summary.get("totalEarnings", 0))
 
-    spend_report = _fetch_spend_report(CAMPAIGN_ID)
+    spend_report = _fetch_spend_report(campaign_id)
     paid = float(spend_report.get("paid", 0))
     paid_off_platform = float(spend_report.get("paidOffPlatform", 0))
     awaiting = float(spend_report.get("awaiting", 0))
@@ -215,7 +255,7 @@ def fetch_via_mcp() -> CampaignMetrics:
     return CampaignMetrics(
         total_views=total_views,
         total_creators=int(summary.get("uniqueCreators", 0)),
-        total_posts=_count_posts_with_view_data(session, CAMPAIGN_ID),
+        total_posts=_count_posts_with_view_data(session, campaign_id),
         total_likes=total_likes,
         total_comments=total_comments,
         total_shares=total_shares,
@@ -230,9 +270,9 @@ def fetch_via_mcp() -> CampaignMetrics:
         base_cpm=round(base_creator_payouts / total_views * 1000, 2) if total_views else 0.0,
         top_creators=[
             {"name": c.get("name", "?"), "views": int(c.get("views", 0))}
-            for c in sorted(_filter_creators(data.get("topCreators", [])), key=lambda c: c.get("views", 0), reverse=True)[:5]
+            for c in sorted(_filter_creators(data.get("topCreators", []), excluded), key=lambda c: c.get("views", 0), reverse=True)[:5]
         ],
-        top_creators_7d=_fetch_top_creators_7d(session, CAMPAIGN_ID),
+        top_creators_7d=_fetch_top_creators_7d(session, campaign_id, excluded),
     )
 
 
@@ -320,9 +360,10 @@ def fetch_via_scrape() -> CampaignMetrics:
         )
 
 
-def fetch_campaign_metrics() -> CampaignMetrics:
+def fetch_campaign_metrics(campaign_id: str = CAMPAIGN_ID, excluded: set = EXCLUDED_CREATOR_NAMES) -> CampaignMetrics:
     if MCP_URL and API_KEY:
-        return fetch_via_mcp()
+        return fetch_via_mcp(campaign_id, excluded)
+    # The REST and scrape fallbacks below are Krea-only (configured by their own env vars).
     if API_URL:
         return fetch_via_api()
     return fetch_via_scrape()
