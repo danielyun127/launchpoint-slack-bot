@@ -1,7 +1,7 @@
 """
 Usage:
     python main.py                   # run Krea's report right now (good for testing)
-    python main.py --client micro1   # run one client's report (krea, micro1, or all)
+    python main.py --client micro1   # run one client's report (krea, micro1, tab, wron, or all)
     python main.py --schedule        # start a long-running process that fires every
                                       # day at 9:00 AM in REPORT_TIMEZONE
 """
@@ -13,7 +13,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from clients import get_client, client_keys_from_argv, DAILY_REPORT, POSTS_DIGEST
-from launchpoint_client import fetch_campaign_metrics
+from launchpoint_client import fetch_campaign_metrics, check_campaign_visible, CampaignNotVisible
+from mcp_client import get_session
 from slack_reporter import send_report
 
 
@@ -21,10 +22,11 @@ def run_client(key: str):
     client = get_client(key)
     if not client.has(DAILY_REPORT):
         return
+    session = get_session(client.launchpoint_api_key)
+    check_campaign_visible(session, client.campaign_id)
     print(f"[{client.name}] Fetching LaunchPoint metrics...")
-    metrics = fetch_campaign_metrics(client.campaign_id, client.excluded_creators)
+    metrics = fetch_campaign_metrics(client.campaign_id, client.excluded_creators, client.launchpoint_api_key)
     if client.video_goal:
-        from mcp_client import get_session
         from launchpoint_client import fetch_all_posts
         from unique_videos import count_videos
 
@@ -33,7 +35,7 @@ def run_client(key: str):
         # views haven't been synced by LaunchPoint yet. Both numbers come from
         # this one fetch so they always agree.
         posts = [
-            p for p in fetch_all_posts(get_session(), client.campaign_id)
+            p for p in fetch_all_posts(session, client.campaign_id)
             if (p.get("views") or 0) > 0
             and p.get("contractorName", "").strip().lower() not in client.excluded_creators
         ]
@@ -44,11 +46,10 @@ def run_client(key: str):
     report_ts = send_report(metrics, client)
 
     if client.has(POSTS_DIGEST):
-        from mcp_client import get_session
         from posts_digest import send_digest
 
         where = "in the report's thread" if report_ts else "as a separate message (no bot token)"
-        count = send_digest(get_session(), client, thread_ts=report_ts)
+        count = send_digest(session, client, thread_ts=report_ts)
         print(f"[{client.name}] Sent posts digest ({count} posts) {where}.")
     print(f"[{client.name}] Done.")
 
@@ -59,6 +60,9 @@ def run_once(keys: list):
     for key in keys:
         try:
             run_client(key)
+        except CampaignNotVisible as e:
+            print(f"ERROR [{key}] Skipped, nothing posted to Slack: {e}", file=sys.stderr)
+            failed.append(key)
         except Exception:
             traceback.print_exc()
             failed.append(key)

@@ -66,17 +66,25 @@ selectors break. The API route in Option A survives redesigns much better.
 
 ## Clients
 
-Each client (Krea, micro1, Tab) has its own config in `clients.py`: name, LaunchPoint
-campaign ID, Slack webhook, total budget, creator exclusions, alerts state file,
-alert start date, and which features are on. Krea keeps its original env var
-names; micro1 uses `MICRO1_*` and Tab uses `TAB_*` (see `.env.example`).
+Each client (Krea, micro1, Tab, Wron AI) has its own config in `clients.py`: name,
+LaunchPoint API key, campaign ID, Slack webhook, total budget, creator exclusions,
+alerts state file, alert start date, and which features are on. Krea keeps its
+original env var names; micro1 uses `MICRO1_*`, Tab uses `TAB_*` and Wron AI uses
+`WRON_*` (see `.env.example`).
 
-| Feature | Krea | micro1 | Tab |
-|---|---|---|---|
-| Daily report | on | on | on |
-| Report goal line | 💰 budget (`KREA_TOTAL_BUDGET`) | 🎬 unique videos (`MICRO1_VIDEO_GOAL`, default 600) | 🎬 unique videos (`TAB_VIDEO_GOAL`, default 750) |
-| Milestone alerts | on (`alerted_posts.json`) | on (`alerted_posts_micro1.json`) | on (`alerted_posts_tab.json`) |
-| Daily posts digest | off | on | off |
+Krea, micro1 and Tab share `LAUNCHPOINT_API_KEY`. Wron AI is on a separate LaunchPoint
+account and uses `WRON_LAUNCHPOINT_API_KEY`, which the workflows only pass to Wron AI's job.
+Before reporting or alerting, each run checks that the client's campaign ID is one of
+the programs its key can see (LaunchPoint returns zeros, not an error, for a campaign
+the key can't access). If it isn't, that client is skipped with an error, nothing is
+posted to Slack, and the run exits non-zero.
+
+| Feature | Krea | micro1 | Tab | Wron AI |
+|---|---|---|---|---|
+| Daily report | on | on | on | on |
+| Report goal line | 💰 budget (`KREA_TOTAL_BUDGET`) | 🎬 unique videos (`MICRO1_VIDEO_GOAL`, default 600) | 🎬 unique videos (`TAB_VIDEO_GOAL`, default 750) | 💰 budget (`WRON_TOTAL_BUDGET`) |
+| Milestone alerts | on (`alerted_posts.json`) | on (`alerted_posts_micro1.json`) | on (`alerted_posts_tab.json`) | on (`alerted_posts_wron.json`) |
+| Daily posts digest | off | on | off | off |
 
 micro1's and Tab's video goals count unique videos, not posts: one video cross-posted to
 TikTok, Instagram, YouTube and Facebook counts once (`unique_videos.py` groups posts by
@@ -85,7 +93,7 @@ the same creator posted within 15 minutes). A video counts toward the goal once 
 its posts reaches `MICRO1_MIN_VIEWS` / `TAB_MIN_VIEWS` (default 1000) views. Like the posts count, it only
 considers posts with view data.
 
-Every command takes `--client krea`, `--client micro1`, `--client tab`, or `--client all`, and
+Every command takes `--client krea`, `--client micro1`, `--client tab`, `--client wron`, or `--client all`, and
 defaults to Krea.
 
 ## Running
@@ -117,11 +125,12 @@ past 5M. If a video jumps several milestones between runs, only the highest one 
 Each client's state file maps post ID to the highest milestone already alerted.
 The `Viral Video Alerts` GitHub Actions workflow runs this every 3 hours (or manually
 from the Actions tab) and commits the updated file back to the repo. Alert start dates default to
-2026-10-05 for Krea and 2026-10-13 for micro1 and Tab; to override them there, set
-`ALERT_START_DATE` / `MICRO1_ALERT_START_DATE` / `TAB_ALERT_START_DATE` as repository *variables* (not secrets).
+2026-10-05 for Krea and 2026-10-13 for micro1, Tab and Wron AI; to override them there, set
+`ALERT_START_DATE` / `MICRO1_ALERT_START_DATE` / `TAB_ALERT_START_DATE` / `WRON_ALERT_START_DATE`
+as repository *variables* (not secrets).
 
 Both workflows run each client as a separate job, so one client failing doesn't
-stop the other.
+stop the others.
 
 ## Deploying so it actually runs weekly without your laptop being on
 

@@ -12,7 +12,9 @@ import itertools
 import requests
 
 MCP_URL = os.environ["LAUNCHPOINT_MCP_URL"]
-API_KEY = os.environ["LAUNCHPOINT_API_KEY"]
+# Default key (Krea, micro1, Tab). Clients on another LaunchPoint account
+# pass their own key to get_session().
+API_KEY = os.environ.get("LAUNCHPOINT_API_KEY", "").strip()
 
 _id_counter = itertools.count(1)
 
@@ -101,7 +103,7 @@ class MCPSession:
         return result.get("result", {})
 
 
-def get_session() -> MCPSession:
-    session = MCPSession(MCP_URL, API_KEY)
+def get_session(api_key: str = "") -> MCPSession:
+    session = MCPSession(MCP_URL, api_key or API_KEY)
     session.initialize()
     return session

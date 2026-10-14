@@ -144,6 +144,31 @@ def fetch_all_posts(session, campaign_id: str) -> list:
     return posts
 
 
+class CampaignNotVisible(Exception):
+    """The client's campaign isn't among the programs its API key can see."""
+
+
+def check_campaign_visible(session, campaign_id: str) -> None:
+    """
+    LaunchPoint doesn't reject a campaign ID the key can't access: analytics
+    and spend just come back as zeros/empty. So confirm the ID is one of this
+    key's programs before reporting anything, rather than posting zeros.
+    """
+    page = 1
+    while True:
+        payload = _mcp_json(session.call_tool("list_programs", {"page": page}))
+        rows = payload.get("data", [])
+        if any(r.get("id") == campaign_id for r in rows):
+            return
+        if not rows or page >= payload.get("totalPages", 1):
+            break
+        page += 1
+    raise CampaignNotVisible(
+        f"Campaign {campaign_id} isn't in the programs this LaunchPoint API key can see "
+        f"(wrong campaign ID, or the key belongs to a different account)"
+    )
+
+
 def fetch_posts_published_since(session, campaign_id: str, start_date: datetime.date) -> list:
     """
     All posts published on/after start_date, plus a one-day buffer before it.
@@ -168,7 +193,7 @@ def fetch_posts_published_since(session, campaign_id: str, start_date: datetime.
     return posts
 
 
-def _fetch_spend_report(program_id: str) -> dict:
+def _fetch_spend_report(program_id: str, api_key: str = API_KEY) -> dict:
     """
     Spend isn't exposed by the MCP server at all — it's a separate plain
     REST endpoint, authenticated with the same API key but as an
@@ -181,7 +206,7 @@ def _fetch_spend_report(program_id: str) -> dict:
     url = f"{parsed.scheme}://{parsed.netloc}/api/v1/payouts/spend"
     resp = requests.get(
         url,
-        headers={"x-api-key": API_KEY, "Accept": "application/json"},
+        headers={"x-api-key": api_key, "Accept": "application/json"},
         params={"programId": program_id},
         timeout=30,
     )
@@ -212,14 +237,14 @@ def _fetch_top_creators_7d(session, program_id: str, excluded: set = EXCLUDED_CR
     return [{"name": c.get("name", "?"), "views": int(c.get("views", 0))} for c in creators[:3]]
 
 
-def fetch_via_mcp(campaign_id: str = CAMPAIGN_ID, excluded: set = EXCLUDED_CREATOR_NAMES) -> CampaignMetrics:
+def fetch_via_mcp(campaign_id: str = CAMPAIGN_ID, excluded: set = EXCLUDED_CREATOR_NAMES, api_key: str = API_KEY) -> CampaignMetrics:
     """
     Calls LaunchPoint's MCP tool `get_analytics_overview`, scoped to our
     campaign via `program_id` (LaunchPoint's internal name for a campaign).
     """
     from mcp_client import get_session
 
-    session = get_session()
+    session = get_session(api_key)
 
     result = session.call_tool(
         "get_analytics_overview",
@@ -245,7 +270,7 @@ def fetch_via_mcp(campaign_id: str = CAMPAIGN_ID, excluded: set = EXCLUDED_CREAT
 
     base_creator_payouts = float(summary.get("totalEarnings", 0))
 
-    spend_report = _fetch_spend_report(campaign_id)
+    spend_report = _fetch_spend_report(campaign_id, api_key)
     paid = float(spend_report.get("paid", 0))
     paid_off_platform = float(spend_report.get("paidOffPlatform", 0))
     awaiting = float(spend_report.get("awaiting", 0))
@@ -360,9 +385,9 @@ def fetch_via_scrape() -> CampaignMetrics:
         )
 
 
-def fetch_campaign_metrics(campaign_id: str = CAMPAIGN_ID, excluded: set = EXCLUDED_CREATOR_NAMES) -> CampaignMetrics:
-    if MCP_URL and API_KEY:
-        return fetch_via_mcp(campaign_id, excluded)
+def fetch_campaign_metrics(campaign_id: str = CAMPAIGN_ID, excluded: set = EXCLUDED_CREATOR_NAMES, api_key: str = API_KEY) -> CampaignMetrics:
+    if MCP_URL and api_key:
+        return fetch_via_mcp(campaign_id, excluded, api_key)
     # The REST and scrape fallbacks below are Krea-only (configured by their own env vars).
     if API_URL:
         return fetch_via_api()

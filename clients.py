@@ -1,7 +1,9 @@
 """
 Per-client configuration. Each client reads its own env vars, so Krea's
 original names (LAUNCHPOINT_CAMPAIGN_ID, SLACK_WEBHOOK_URL, KREA_TOTAL_BUDGET,
-ALERT_START_DATE, CLIENT_NAME) keep working unchanged.
+ALERT_START_DATE, CLIENT_NAME) keep working unchanged. Krea, micro1 and Tab
+share LAUNCHPOINT_API_KEY; Wron AI is on a separate LaunchPoint account and
+uses WRON_LAUNCHPOINT_API_KEY.
 
 Env vars are read when a client is loaded, not at import, so running one
 client never requires the other client's secrets.
@@ -32,6 +34,8 @@ class ClientConfig:
     alerts_state_file: str
     alert_start_date: datetime.date
     features: set
+    # Each LaunchPoint account has its own key; a key only sees its account's campaigns.
+    launchpoint_api_key: str
     # Optional: posting through the Slack Web API (instead of the webhook)
     # returns the message timestamp, which the posts digest needs to reply in
     # the report's thread.
@@ -72,6 +76,7 @@ def _krea() -> ClientConfig:
         alerts_state_file=os.path.join(BASE_DIR, "alerted_posts.json"),
         alert_start_date=_date("ALERT_START_DATE", "2026-10-05"),
         features={DAILY_REPORT, MILESTONE_ALERTS},
+        launchpoint_api_key=_required("LAUNCHPOINT_API_KEY"),
         test_post_url="https://www.instagram.com/reel/DeHBpe8KvBy/",
     )
 
@@ -89,6 +94,7 @@ def _micro1() -> ClientConfig:
         alerts_state_file=os.path.join(BASE_DIR, "alerted_posts_micro1.json"),
         alert_start_date=_date("MICRO1_ALERT_START_DATE", "2026-10-13"),
         features={DAILY_REPORT, MILESTONE_ALERTS, POSTS_DIGEST},
+        launchpoint_api_key=_required("LAUNCHPOINT_API_KEY"),
         slack_bot_token=_env("MICRO1_SLACK_BOT_TOKEN"),
         slack_channel_id=_env("MICRO1_SLACK_CHANNEL_ID"),
     )
@@ -107,10 +113,28 @@ def _tab() -> ClientConfig:
         alerts_state_file=os.path.join(BASE_DIR, "alerted_posts_tab.json"),
         alert_start_date=_date("TAB_ALERT_START_DATE", "2026-10-13"),
         features={DAILY_REPORT, MILESTONE_ALERTS},
+        launchpoint_api_key=_required("LAUNCHPOINT_API_KEY"),
     )
 
 
-CLIENTS = {"krea": _krea, "micro1": _micro1, "tab": _tab}
+def _wron() -> ClientConfig:
+    return ClientConfig(
+        key="wron",
+        name="Wron AI",
+        campaign_id=_required("WRON_CAMPAIGN_ID"),
+        slack_webhook_url=_required("WRON_SLACK_WEBHOOK_URL"),
+        total_budget=_env("WRON_TOTAL_BUDGET"),
+        video_goal=0,
+        min_views=0,
+        excluded_creators=set(),
+        alerts_state_file=os.path.join(BASE_DIR, "alerted_posts_wron.json"),
+        alert_start_date=_date("WRON_ALERT_START_DATE", "2026-10-13"),
+        features={DAILY_REPORT, MILESTONE_ALERTS},
+        launchpoint_api_key=_required("WRON_LAUNCHPOINT_API_KEY"),
+    )
+
+
+CLIENTS = {"krea": _krea, "micro1": _micro1, "tab": _tab, "wron": _wron}
 
 
 def get_client(key: str) -> ClientConfig:
@@ -120,7 +144,7 @@ def get_client(key: str) -> ClientConfig:
 
 
 def client_keys_from_argv(argv: list, default: str = "krea") -> list:
-    """`--client krea`, `--client micro1`, or `--client all`. Defaults to Krea
+    """`--client krea` (or micro1, tab, wron), or `--client all`. Defaults to Krea
     so plain `python main.py` behaves exactly as it did before."""
     key = default
     if "--client" in argv:

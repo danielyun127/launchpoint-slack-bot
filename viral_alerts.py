@@ -6,7 +6,7 @@ maps post ID to the highest milestone already alerted, so each milestone only
 alerts once.
 
 Usage:
-    python viral_alerts.py                          # Krea (or --client micro1 / all)
+    python viral_alerts.py                          # Krea (or --client micro1 / tab / wron / all)
     python viral_alerts.py --test [--client micro1] # post one [TEST] card, not recorded
                                                     # (Krea: the William Pham reel at 250K;
                                                     # others: the client's top post)
@@ -25,7 +25,7 @@ load_dotenv()
 
 from clients import ClientConfig, get_client, client_keys_from_argv, MILESTONE_ALERTS
 from mcp_client import get_session
-from launchpoint_client import fetch_all_posts, fetch_posts_published_since
+from launchpoint_client import fetch_all_posts, fetch_posts_published_since, check_campaign_visible, CampaignNotVisible
 from slack_client import post_message
 
 PACIFIC = ZoneInfo("America/Los_Angeles")
@@ -127,7 +127,8 @@ def run(client: ClientConfig) -> None:
     cutoff_ms = int(datetime.datetime.combine(client.alert_start_date, datetime.time(), PACIFIC).timestamp() * 1000)
     print(f"[{client.name}] Checking posts on/after {client.alert_start_date} PT for new view milestones...")
 
-    session = get_session()
+    session = get_session(client.launchpoint_api_key)
+    check_campaign_visible(session, client.campaign_id)
     posts = fetch_posts_published_since(session, client.campaign_id, client.alert_start_date)
 
     undated = [p for p in posts if not p.get("uploadedAt")]
@@ -160,7 +161,8 @@ def run(client: ClientConfig) -> None:
 
 
 def run_test(client: ClientConfig) -> None:
-    session = get_session()
+    session = get_session(client.launchpoint_api_key)
+    check_campaign_visible(session, client.campaign_id)
     if client.test_post_url:
         posts = fetch_posts_published_since(session, client.campaign_id, client.alert_start_date)
         post = next(p for p in posts if p.get("url") == client.test_post_url)
@@ -182,6 +184,9 @@ def main() -> None:
                 run_test(client)
             elif client.has(MILESTONE_ALERTS):
                 run(client)
+        except CampaignNotVisible as e:
+            print(f"ERROR [{key}] Skipped, nothing posted to Slack: {e}", file=sys.stderr)
+            failed.append(key)
         except Exception:
             traceback.print_exc()
             failed.append(key)

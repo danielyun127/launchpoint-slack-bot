@@ -17,7 +17,7 @@ jobs:
       # Each client is its own job, so one failing doesn't stop the other.
       fail-fast: false
       matrix:
-        client: [krea, micro1, tab]
+        client: [krea, micro1, tab, wron]
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
@@ -48,4 +48,9 @@ jobs:
           TAB_MIN_VIEWS: ${{ vars.TAB_MIN_VIEWS }}
           MICRO1_SLACK_BOT_TOKEN: ${{ secrets.MICRO1_SLACK_BOT_TOKEN }}
           MICRO1_SLACK_CHANNEL_ID: ${{ secrets.MICRO1_SLACK_CHANNEL_ID }}
+          WRON_CAMPAIGN_ID: ${{ secrets.WRON_CAMPAIGN_ID }}
+          WRON_SLACK_WEBHOOK_URL: ${{ secrets.WRON_SLACK_WEBHOOK_URL }}
+          WRON_TOTAL_BUDGET: ${{ secrets.WRON_TOTAL_BUDGET }}
+          # Wron AI is on its own LaunchPoint account; only its job gets this key.
+          WRON_LAUNCHPOINT_API_KEY: ${{ matrix.client == 'wron' && secrets.WRON_LAUNCHPOINT_API_KEY || '' }}
         run: python main.py --client ${{ matrix.client }}
