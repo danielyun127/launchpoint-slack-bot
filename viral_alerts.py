@@ -180,9 +180,11 @@ def main() -> None:
     for key in client_keys_from_argv(sys.argv):
         try:
             client = get_client(key)
+            if not client.has(MILESTONE_ALERTS):
+                continue
             if "--test" in sys.argv:
                 run_test(client)
-            elif client.has(MILESTONE_ALERTS):
+            else:
                 run(client)
         except CampaignNotVisible as e:
             print(f"ERROR [{key}] Skipped, nothing posted to Slack: {e}", file=sys.stderr)

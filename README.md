@@ -66,14 +66,15 @@ selectors break. The API route in Option A survives redesigns much better.
 
 ## Clients
 
-Each client (Krea, micro1, Tab, Wron AI) has its own config in `clients.py`: name,
+Each client (Krea, micro1, Tab, Wron AI, Bon Credit) has its own config in `clients.py`: name,
 LaunchPoint API key, campaign ID, Slack webhook, total budget, creator exclusions,
 alerts state file, alert start date, and which features are on. Krea keeps its
-original env var names; micro1 uses `MICRO1_*`, Tab uses `TAB_*` and Wron AI uses
-`WRON_*` (see `.env.example`).
+original env var names; micro1 uses `MICRO1_*`, Tab uses `TAB_*`, Wron AI uses
+`WRON_*` and Bon Credit uses `BONCREDIT_*` (see `.env.example`).
 
 Krea, micro1 and Tab share `LAUNCHPOINT_API_KEY`. Wron AI is on a separate LaunchPoint
 account and uses `WRON_LAUNCHPOINT_API_KEY`, which the workflows only pass to Wron AI's job.
+Bon Credit uses `BONCREDIT_LAUNCHPOINT_API_KEY` the same way.
 Before reporting or alerting, each run checks that the client's campaign ID is one of
 the programs its key can see (LaunchPoint returns zeros, not an error, for a campaign
 the key can't access). If it isn't, that client is skipped with an error, nothing is
@@ -85,6 +86,9 @@ posted to Slack, and the run exits non-zero.
 | Report goal line | 💰 budget (`KREA_TOTAL_BUDGET`) | 🎬 unique videos (`MICRO1_VIDEO_GOAL`, default 600) | 🎬 unique videos (`TAB_VIDEO_GOAL`, default 750) | 💰 budget (`WRON_TOTAL_BUDGET`) |
 | Milestone alerts | on (`alerted_posts.json`) | on (`alerted_posts_micro1.json`) | on (`alerted_posts_tab.json`) | on (`alerted_posts_wron.json`) |
 | Daily posts digest | off | on | off | off |
+
+Bon Credit gets no Slack messages at all: no daily report, no milestone alerts, no digest.
+It gets a weekly email instead (see below).
 
 micro1's and Tab's video goals count unique videos, not posts: one video cross-posted to
 TikTok, Instagram, YouTube and Facebook counts once (`unique_videos.py` groups posts by
@@ -112,6 +116,20 @@ Slack webhooks can't reply in a thread, so the digest only threads under the rep
 when `MICRO1_SLACK_BOT_TOKEN` and `MICRO1_SLACK_CHANNEL_ID` are set (a bot with
 `chat:write`, invited to the channel). Without them it posts as a separate message
 right after the report.
+
+### Weekly email (Bon Credit)
+
+```bash
+python weekly_email.py --client boncredit --test   # one [TEST] copy to daniel@vocreations.com only
+python weekly_email.py --client boncredit          # the real email: BONCREDIT_EMAIL_TO, CC BONCREDIT_EMAIL_CC
+```
+
+Sent through Gmail SMTP (`GMAIL_ADDRESS` + `GMAIL_APP_PASSWORD`, a Google app password)
+from "Daniel Yun, Vo Creations", with Reply-To daniel@vocreations.com. HTML with a plain-text
+fallback: creator budget used (`BONCREDIT_TOTAL_BUDGET`) with a progress bar, all-time
+totals, this week's videos posted and top 3 creators, and any videos that passed 100K, 250K,
+500K or 1M views this week (from LaunchPoint's daily view history; the section is left out
+when there are none). "This week" is the 7 days before today (Pacific) through now.
 
 ## Viral video alerts
 

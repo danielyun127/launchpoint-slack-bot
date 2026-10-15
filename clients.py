@@ -3,7 +3,8 @@ Per-client configuration. Each client reads its own env vars, so Krea's
 original names (LAUNCHPOINT_CAMPAIGN_ID, SLACK_WEBHOOK_URL, KREA_TOTAL_BUDGET,
 ALERT_START_DATE, CLIENT_NAME) keep working unchanged. Krea, micro1 and Tab
 share LAUNCHPOINT_API_KEY; Wron AI is on a separate LaunchPoint account and
-uses WRON_LAUNCHPOINT_API_KEY.
+uses WRON_LAUNCHPOINT_API_KEY. Bon Credit is emailed weekly instead of
+posted to Slack, and uses BONCREDIT_LAUNCHPOINT_API_KEY.
 
 Env vars are read when a client is loaded, not at import, so running one
 client never requires the other client's secrets.
@@ -19,6 +20,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DAILY_REPORT = "daily_report"
 MILESTONE_ALERTS = "milestone_alerts"
 POSTS_DIGEST = "posts_digest"
+WEEKLY_EMAIL = "weekly_email"
 
 
 @dataclass
@@ -43,6 +45,9 @@ class ClientConfig:
     slack_channel_id: str = ""
     # --test milestone card uses this post; if unset, the client's top post.
     test_post_url: str = ""
+    # Weekly email recipients (weekly_email.py), comma-separated.
+    email_to: str = ""
+    email_cc: str = ""
 
     def has(self, feature: str) -> bool:
         return feature in self.features
@@ -134,7 +139,26 @@ def _wron() -> ClientConfig:
     )
 
 
-CLIENTS = {"krea": _krea, "micro1": _micro1, "tab": _tab, "wron": _wron}
+def _boncredit() -> ClientConfig:
+    return ClientConfig(
+        key="boncredit",
+        name="Bon Credit",
+        campaign_id=_required("BONCREDIT_CAMPAIGN_ID"),
+        slack_webhook_url="",  # email only
+        total_budget=_env("BONCREDIT_TOTAL_BUDGET"),
+        video_goal=0,
+        min_views=0,
+        excluded_creators=set(),
+        alerts_state_file="",
+        alert_start_date=datetime.date.min,
+        features={WEEKLY_EMAIL},
+        launchpoint_api_key=_required("BONCREDIT_LAUNCHPOINT_API_KEY"),
+        email_to=_required("BONCREDIT_EMAIL_TO"),
+        email_cc=_env("BONCREDIT_EMAIL_CC"),
+    )
+
+
+CLIENTS = {"krea": _krea, "micro1": _micro1, "tab": _tab, "wron": _wron, "boncredit": _boncredit}
 
 
 def get_client(key: str) -> ClientConfig:
@@ -144,7 +168,7 @@ def get_client(key: str) -> ClientConfig:
 
 
 def client_keys_from_argv(argv: list, default: str = "krea") -> list:
-    """`--client krea` (or micro1, tab, wron), or `--client all`. Defaults to Krea
+    """`--client krea` (or micro1, tab, wron, boncredit), or `--client all`. Defaults to Krea
     so plain `python main.py` behaves exactly as it did before."""
     key = default
     if "--client" in argv:
