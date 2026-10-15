@@ -1,0 +1,62 @@
+name: Weekly Client Email
+
+on:
+  schedule:
+    # Fridays at 9:00 AM Pacific. GitHub cron is UTC-only, so this fires at
+    # both 16:00 UTC (9am PDT) and 17:00 UTC (9am PST), and the gate step
+    # below lets through only the one that is 9am Pacific this week. No
+    # changes needed when daylight saving starts or ends.
+    - cron: "0 16 * * 5"
+    - cron: "0 17 * * 5"
+  workflow_dispatch:
+    inputs:
+      test:
+        description: "Send one [TEST] copy to daniel@vocreations.com only (not the client)"
+        type: boolean
+        default: false
+
+jobs:
+  send-email:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check it's 9am Pacific
+        id: gate
+        run: |
+          # Gate on which cron fired, not the current time, so a run GitHub
+          # starts late still sends exactly once. Manual runs always send.
+          offset=$(TZ=America/Los_Angeles date +%z)  # -0700 PDT, -0800 PST
+          if [ "${{ github.event_name }}" != "schedule" ] \
+            || { [ "$offset" = "-0700" ] && [ "${{ github.event.schedule }}" = "0 16 * * 5" ]; } \
+            || { [ "$offset" = "-0800" ] && [ "${{ github.event.schedule }}" = "0 17 * * 5" ]; }; then
+            echo "send=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Not 9am Pacific (offset $offset, cron '${{ github.event.schedule }}'); skipping."
+            echo "send=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check out repo
+        if: steps.gate.outputs.send == 'true'
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        if: steps.gate.outputs.send == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        if: steps.gate.outputs.send == 'true'
+        run: pip install -r requirements.txt
+
+      - name: Send Bon Credit email
+        if: steps.gate.outputs.send == 'true'
+        env:
+          LAUNCHPOINT_MCP_URL: ${{ secrets.LAUNCHPOINT_MCP_URL }}
+          BONCREDIT_LAUNCHPOINT_API_KEY: ${{ secrets.BONCREDIT_LAUNCHPOINT_API_KEY }}
+          BONCREDIT_CAMPAIGN_ID: ${{ secrets.BONCREDIT_CAMPAIGN_ID }}
+          BONCREDIT_TOTAL_BUDGET: ${{ secrets.BONCREDIT_TOTAL_BUDGET }}
+          BONCREDIT_EMAIL_TO: ${{ secrets.BONCREDIT_EMAIL_TO }}
+          BONCREDIT_EMAIL_CC: ${{ secrets.BONCREDIT_EMAIL_CC }}
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        run: python weekly_email.py --client boncredit ${{ inputs.test && '--test' || '' }}

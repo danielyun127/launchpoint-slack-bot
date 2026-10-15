@@ -130,6 +130,14 @@ fallback: creator budget used (`BONCREDIT_TOTAL_BUDGET`) with a progress bar, al
 totals, this week's videos posted and top 3 creators, and any videos that passed 100K, 250K,
 500K or 1M views this week (from LaunchPoint's daily view history; the section is left out
 when there are none). "This week" is the 7 days before today (Pacific) through now.
+"Videos posted" counts unique videos (same grouping as micro1/Tab) and how many platform
+posts they were shared as. The subject reads "Week ending <Friday>".
+
+The `Weekly Client Email` GitHub Actions workflow sends it every Friday at 9am Pacific.
+It's scheduled at both 16:00 and 17:00 UTC and a gate step lets only the one that's 9am
+Pacific through, so it needs no change when daylight saving starts or ends. It can also
+be run manually from the Actions tab, with a `test` checkbox that sends one [TEST] copy to
+daniel@vocreations.com only.
 
 ## Viral video alerts
 

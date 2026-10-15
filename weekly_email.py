@@ -5,7 +5,11 @@ any videos that crossed a view milestone this week. Sent through Gmail SMTP as
 HTML with a plain-text fallback.
 
 "This week" is the 7 days before today (Pacific) through now, the same window
-as the Slack reports' "Top Creators (Last 7 Days)".
+as the Slack reports' "Top Creators (Last 7 Days)". The subject says "Week ending
+<Friday>": the send day on the Friday schedule, else the next Friday.
+
+"Videos posted" counts unique videos (unique_videos.py, same grouping as
+micro1/Tab), alongside the number of platform posts they were shared as.
 
 Usage:
     python weekly_email.py --client boncredit          # send to the client (To + CC)
@@ -33,6 +37,7 @@ from launchpoint_client import (
     CampaignMetrics, CampaignNotVisible, _mcp_json, check_campaign_visible,
     fetch_all_posts, fetch_campaign_metrics,
 )
+from unique_videos import group_videos
 
 PACIFIC = ZoneInfo("America/Los_Angeles")
 
@@ -57,7 +62,9 @@ class WeeklyData:
     metrics: CampaignMetrics
     week_start: datetime.date
     today: datetime.date
-    week_posts: int
+    total_videos: int  # unique videos; metrics.total_posts is their platform posts
+    week_videos: int  # unique videos first posted this week
+    week_posts: int  # platform posts of those videos
     top_videos: list  # [(post, milestone)], most views first
 
 
@@ -99,7 +106,9 @@ def gather(client: ClientConfig) -> WeeklyData:
         and p.get("contractorName", "").strip().lower() not in client.excluded_creators
     ]
     metrics.total_posts = len(posts)
-    week_posts = sum(1 for p in posts if (p.get("uploadedAt") or 0) >= start_ms)
+    videos = group_videos(posts)
+    # A video counts toward this week if its first post was this week, with all its posts.
+    week = [v for v in videos if min(p.get("uploadedAt") or 0 for p in v) >= start_ms]
 
     top_videos = []
     for p in posts:
@@ -108,7 +117,7 @@ def gather(client: ClientConfig) -> WeeklyData:
             top_videos.append((p, now))
     top_videos.sort(key=lambda t: t[0]["views"], reverse=True)
 
-    return WeeklyData(metrics, week_start, today, week_posts, top_videos)
+    return WeeklyData(metrics, week_start, today, len(videos), len(week), sum(len(v) for v in week), top_videos)
 
 
 def _budget(m: CampaignMetrics, client: ClientConfig) -> tuple:
@@ -125,37 +134,57 @@ def _date(d: datetime.date) -> str:
     return d.strftime("%b %-d, %Y")
 
 
+def week_ending(today: datetime.date) -> datetime.date:
+    """Today on a Friday (the scheduled send day), otherwise the coming Friday."""
+    return today + datetime.timedelta(days=(4 - today.weekday()) % 7)
+
+
 def subject(client: ClientConfig, data: WeeklyData) -> str:
-    return f"{client.name} Campaign Update — Week of {_date(data.week_start)}"
+    return f"{client.name} Campaign Update — Week ending {_date(week_ending(data.today))}"
 
 
-def _totals(m: CampaignMetrics) -> list:
+def _shared(posts: int) -> str:
+    return f"(shared across {posts:,} platform posts)"
+
+
+def _totals(data: WeeklyData) -> list:
+    """(label, value, note) rows; note is shown after the value."""
+    m = data.metrics
     return [
-        ("Total views", f"{m.total_views:,}"),
-        ("Videos posted", f"{m.total_posts:,}"),
-        ("Active creators", f"{m.total_creators:,}"),
-        ("Cost per 1,000 views", f"${m.cpm:,.2f}"),
+        ("Total views", f"{m.total_views:,}", ""),
+        ("Videos posted", f"{data.total_videos:,}", _shared(m.total_posts)),
+        ("Active creators", f"{m.total_creators:,}", ""),
+        ("Cost per 1,000 views", f"${m.cpm:,.2f}", ""),
     ]
+
+
+def _week(data: WeeklyData) -> list:
+    return [("Videos posted", f"{data.week_videos:,}", _shared(data.week_posts))]
+
+
+def _text_rows(rows: list) -> list:
+    return [f"{label}: {value}" + (f" {note}" if note else "") for label, value, note in rows]
 
 
 def _platform(post: dict) -> str:
     return PLATFORM_NAMES.get(post.get("platform", ""), post.get("platform", "").title())
 
 
-def build_text(client: ClientConfig, data: WeeklyData) -> str:
+def build_text(client: ClientConfig, data: WeeklyData, intro: str = "") -> str:
     m = data.metrics
     line, _ = _budget(m, client)
     out = [
         f"{client.name} Campaign Update",
         f"{_date(data.week_start)} – {_date(data.today)}",
         "",
+        *([intro, ""] if intro else []),
         line,
         "",
         "ALL-TIME TOTALS",
-        *(f"{label}: {value}" for label, value in _totals(m)),
+        *_text_rows(_totals(data)),
         "",
         "THIS WEEK",
-        f"Videos posted: {data.week_posts:,}",
+        *_text_rows(_week(data)),
     ]
     if m.top_creators_7d:
         out.append("Top creators by views:")
@@ -184,11 +213,17 @@ def _section_title(title: str) -> str:
             f'letter-spacing:0.06em;text-transform:uppercase;color:{MUTED};">{title}</td></tr>')
 
 
-def _rows(pairs: list) -> str:
+def _rows(rows: list) -> str:
+    # The note goes on its own line under the value, so long notes don't squeeze the label on phones.
+    def note_html(note: str) -> str:
+        if not note:
+            return ""
+        return f'<br><span style="font-size:14px;font-weight:400;color:{MUTED};">{html.escape(note)}</span>'
+
     cells = "".join(
-        f'<tr><td style="padding:10px 0;border-bottom:1px solid {RULE};{FONT}font-size:18px;color:{TEXT};">{html.escape(label)}</td>'
-        f'<td align="right" style="padding:10px 0;border-bottom:1px solid {RULE};{FONT}font-size:18px;font-weight:600;color:{TEXT};">{html.escape(value)}</td></tr>'
-        for label, value in pairs
+        f'<tr><td valign="top" style="padding:10px 12px 10px 0;border-bottom:1px solid {RULE};{FONT}font-size:18px;color:{TEXT};">{html.escape(label)}</td>'
+        f'<td align="right" valign="top" style="padding:10px 0;border-bottom:1px solid {RULE};{FONT}font-size:18px;font-weight:600;color:{TEXT};">{html.escape(value)}{note_html(note)}</td></tr>'
+        for label, value, note in rows
     )
     return f'<tr><td><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">{cells}</table></td></tr>'
 
@@ -209,7 +244,7 @@ def _paragraph(text_html: str, size: int = 18, color: str = TEXT, pad: str = "6p
     return f'<tr><td style="padding:{pad};{FONT}font-size:{size}px;line-height:1.5;color:{color};">{text_html}</td></tr>'
 
 
-def build_html(client: ClientConfig, data: WeeklyData) -> str:
+def build_html(client: ClientConfig, data: WeeklyData, intro: str = "", subject_line: str = "") -> str:
     m = data.metrics
     line, pct = _budget(m, client)
     e = html.escape
@@ -217,14 +252,18 @@ def build_html(client: ClientConfig, data: WeeklyData) -> str:
     body = [
         _paragraph(f"<strong>{e(client.name)} Campaign Update</strong>", size=26, pad="0"),
         _paragraph(f"{_date(data.week_start)} – {_date(data.today)}", size=16, color=MUTED, pad="4px 0 0"),
+    ]
+    if intro:
+        body.append(_paragraph(e(intro), pad="24px 0 0"))
+    body += [
         _paragraph(f"<strong>{e(line)}</strong>", size=19, pad="28px 0 0"),
     ]
     if pct is not None:
         body.append(_progress_bar(pct))
 
-    body += [_section_title("All-time totals"), _rows(_totals(m))]
+    body += [_section_title("All-time totals"), _rows(_totals(data))]
 
-    body += [_section_title("This week"), _rows([("Videos posted", f"{data.week_posts:,}")])]
+    body += [_section_title("This week"), _rows(_week(data))]
     if m.top_creators_7d:
         body.append(_paragraph("Top creators by views:", pad="14px 0 2px"))
         body += [
@@ -252,7 +291,7 @@ def build_html(client: ClientConfig, data: WeeklyData) -> str:
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light">
-<title>{e(subject(client, data))}</title>
+<title>{e(subject_line or subject(client, data))}</title>
 </head>
 <body style="margin:0;padding:0;background:#ffffff;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;">
@@ -271,8 +310,9 @@ def _addresses(raw: str) -> list:
     return [a.strip() for a in raw.split(",") if a.strip()]
 
 
-def send(client: ClientConfig, data: WeeklyData, test: bool = False) -> list:
-    """Sends the email and returns the envelope recipients."""
+def send(client: ClientConfig, data: WeeklyData, test: bool = False, intro: str = "", subject_line: str = "") -> list:
+    """Sends the email and returns the envelope recipients. intro and subject_line
+    are for one-off sends (e.g. a client's first update); the weekly run uses neither."""
     gmail = os.environ["GMAIL_ADDRESS"].strip()
     # Google shows app passwords in groups of four; the spaces aren't part of it.
     password = os.environ["GMAIL_APP_PASSWORD"].replace(" ", "").strip()
@@ -281,14 +321,14 @@ def send(client: ClientConfig, data: WeeklyData, test: bool = False) -> list:
     cc = [] if test else _addresses(client.email_cc)
 
     msg = EmailMessage()
-    msg["Subject"] = ("[TEST] " if test else "") + subject(client, data)
+    msg["Subject"] = ("[TEST] " if test else "") + (subject_line or subject(client, data))
     msg["From"] = formataddr((FROM_NAME, gmail))
     msg["To"] = ", ".join(to)
     if cc:
         msg["Cc"] = ", ".join(cc)
     msg["Reply-To"] = REPLY_TO
-    msg.set_content(build_text(client, data))
-    msg.add_alternative(build_html(client, data), subtype="html")
+    msg.set_content(build_text(client, data, intro))
+    msg.add_alternative(build_html(client, data, intro, subject_line), subtype="html")
 
     with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as smtp:
         smtp.login(gmail, password)
