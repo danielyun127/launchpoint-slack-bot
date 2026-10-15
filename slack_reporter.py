@@ -49,7 +49,14 @@ def _video_goal_blocks(metrics: CampaignMetrics, client: ClientConfig) -> list:
     ]
 
 
-def build_blocks(metrics: CampaignMetrics, client: ClientConfig) -> list:
+def _conversions_text(conversions) -> str:
+    return (
+        f"🔗 {conversions.referrals:,} referrals · {conversions.traders:,} traders ({conversions.rate:.1f}%)\n"
+        f"+{conversions.referrals_7d:,} referrals in the last 7 days"
+    )
+
+
+def build_blocks(metrics: CampaignMetrics, client: ClientConfig, conversions=None) -> list:
     today = datetime.date.today().strftime("%b %d, %Y")
 
     if metrics.top_creators_7d:
@@ -62,6 +69,8 @@ def build_blocks(metrics: CampaignMetrics, client: ClientConfig) -> list:
 
     if client.video_goal:
         goal_blocks = _video_goal_blocks(metrics, client)
+    elif not client.show_spend:
+        goal_blocks = []
     else:
         goal_blocks = [{
             "type": "section",
@@ -96,6 +105,7 @@ def build_blocks(metrics: CampaignMetrics, client: ClientConfig) -> list:
                 "text": f"${metrics.cpm:,.2f} CPM · {metrics.engagement_rate}% engagement rate",
             },
         },
+        *([{"type": "section", "text": {"type": "mrkdwn", "text": _conversions_text(conversions)}}] if conversions else []),
         {"type": "divider"},
         {
             "type": "section",
@@ -104,6 +114,6 @@ def build_blocks(metrics: CampaignMetrics, client: ClientConfig) -> list:
     ]
 
 
-def send_report(metrics: CampaignMetrics, client: ClientConfig) -> str:
+def send_report(metrics: CampaignMetrics, client: ClientConfig, conversions=None) -> str:
     """Returns the message ts when posted via the Web API (for threading), else None."""
-    return post_message(client, {"blocks": build_blocks(metrics, client)})
+    return post_message(client, {"blocks": build_blocks(metrics, client, conversions)})

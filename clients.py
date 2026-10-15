@@ -4,7 +4,8 @@ original names (LAUNCHPOINT_CAMPAIGN_ID, SLACK_WEBHOOK_URL, KREA_TOTAL_BUDGET,
 ALERT_START_DATE, CLIENT_NAME) keep working unchanged. Krea, micro1 and Tab
 share LAUNCHPOINT_API_KEY; Wron AI is on a separate LaunchPoint account and
 uses WRON_LAUNCHPOINT_API_KEY. Bon Credit is emailed weekly instead of
-posted to Slack, and uses BONCREDIT_LAUNCHPOINT_API_KEY.
+posted to Slack, and uses BONCREDIT_LAUNCHPOINT_API_KEY. FOMO uses
+LAUNCHPOINT_API_KEY.
 
 Env vars are read when a client is loaded, not at import, so running one
 client never requires the other client's secrets.
@@ -21,6 +22,7 @@ DAILY_REPORT = "daily_report"
 MILESTONE_ALERTS = "milestone_alerts"
 POSTS_DIGEST = "posts_digest"
 WEEKLY_EMAIL = "weekly_email"
+CONVERSIONS = "conversions"  # PostHog referrals/traders lines in the daily report
 
 
 @dataclass
@@ -48,6 +50,13 @@ class ClientConfig:
     # Weekly email recipients (weekly_email.py), comma-separated.
     email_to: str = ""
     email_cc: str = ""
+    # False: the report has no budget or spend line at all.
+    show_spend: bool = True
+    # True: "active creators" counts creators on an active contract who have
+    # posted, instead of LaunchPoint's count of everyone who has posted.
+    active_creators_only: bool = False
+    # Shared PostHog dashboard the CONVERSIONS lines come from (conversions.py).
+    posthog_shared_url: str = ""
 
     def has(self, feature: str) -> bool:
         return feature in self.features
@@ -158,7 +167,27 @@ def _boncredit() -> ClientConfig:
     )
 
 
-CLIENTS = {"krea": _krea, "micro1": _micro1, "tab": _tab, "wron": _wron, "boncredit": _boncredit}
+def _fomo() -> ClientConfig:
+    return ClientConfig(
+        key="fomo",
+        name="FOMO",
+        campaign_id=_required("FOMO_CAMPAIGN_ID"),
+        slack_webhook_url=_required("FOMO_SLACK_WEBHOOK_URL"),
+        total_budget="",
+        video_goal=0,
+        min_views=0,
+        excluded_creators=set(),
+        alerts_state_file=os.path.join(BASE_DIR, "alerted_posts_fomo.json"),
+        alert_start_date=_date("FOMO_ALERT_START_DATE", "2026-10-14"),
+        features={DAILY_REPORT, MILESTONE_ALERTS, CONVERSIONS},
+        launchpoint_api_key=_required("LAUNCHPOINT_API_KEY"),
+        show_spend=False,
+        active_creators_only=True,
+        posthog_shared_url=_env("FOMO_POSTHOG_SHARED_URL"),
+    )
+
+
+CLIENTS = {"krea": _krea, "micro1": _micro1, "tab": _tab, "wron": _wron, "boncredit": _boncredit, "fomo": _fomo}
 
 
 def get_client(key: str) -> ClientConfig:
@@ -168,7 +197,7 @@ def get_client(key: str) -> ClientConfig:
 
 
 def client_keys_from_argv(argv: list, default: str = "krea") -> list:
-    """`--client krea` (or micro1, tab, wron, boncredit), or `--client all`. Defaults to Krea
+    """`--client krea` (or micro1, tab, wron, boncredit, fomo), or `--client all`. Defaults to Krea
     so plain `python main.py` behaves exactly as it did before."""
     key = default
     if "--client" in argv:

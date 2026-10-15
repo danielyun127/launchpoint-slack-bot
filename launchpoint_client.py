@@ -169,6 +169,26 @@ def check_campaign_visible(session, campaign_id: str) -> None:
     )
 
 
+def fetch_active_creator_ids(session, campaign_id: str) -> set:
+    """
+    Creators currently on the campaign: list_creators' contractStatus for this
+    campaign is "active" (removed creators are "completed").
+    """
+    active = set()
+    page = 1
+    while True:
+        payload = _mcp_json(session.call_tool("list_creators", {"program_id": campaign_id, "limit": 100, "page": page}))
+        rows = payload.get("data", [])
+        for creator in rows:
+            for campaign in creator.get("campaigns", []):
+                if campaign.get("programId") == campaign_id and campaign.get("contractStatus") == "active":
+                    active.add(creator["id"])
+        if not rows or page >= payload.get("totalPages", 1):
+            break
+        page += 1
+    return active
+
+
 def fetch_posts_published_since(session, campaign_id: str, start_date: datetime.date) -> list:
     """
     All posts published on/after start_date, plus a one-day buffer before it.

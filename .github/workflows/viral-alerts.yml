@@ -30,6 +30,8 @@ jobs:
             state_file: alerted_posts_tab.json
           - client: wron
             state_file: alerted_posts_wron.json
+          - client: fomo
+            state_file: alerted_posts_fomo.json
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
@@ -60,6 +62,9 @@ jobs:
           WRON_CAMPAIGN_ID: ${{ secrets.WRON_CAMPAIGN_ID }}
           WRON_SLACK_WEBHOOK_URL: ${{ secrets.WRON_SLACK_WEBHOOK_URL }}
           WRON_ALERT_START_DATE: ${{ vars.WRON_ALERT_START_DATE }}
+          FOMO_CAMPAIGN_ID: ${{ secrets.FOMO_CAMPAIGN_ID }}
+          FOMO_SLACK_WEBHOOK_URL: ${{ secrets.FOMO_SLACK_WEBHOOK_URL }}
+          FOMO_ALERT_START_DATE: ${{ vars.FOMO_ALERT_START_DATE }}
           # Wron AI is on its own LaunchPoint account; only its job gets this key.
           WRON_LAUNCHPOINT_API_KEY: ${{ matrix.client == 'wron' && secrets.WRON_LAUNCHPOINT_API_KEY || '' }}
         run: python viral_alerts.py --client ${{ matrix.client }}

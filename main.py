@@ -1,7 +1,7 @@
 """
 Usage:
     python main.py                   # run Krea's report right now (good for testing)
-    python main.py --client micro1   # run one client's report (krea, micro1, tab, wron, or all)
+    python main.py --client micro1   # run one client's report (krea, micro1, tab, wron, fomo, or all)
     python main.py --schedule        # start a long-running process that fires every
                                       # day at 9:00 AM in REPORT_TIMEZONE
 """
@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from clients import get_client, client_keys_from_argv, DAILY_REPORT, POSTS_DIGEST
+from clients import get_client, client_keys_from_argv, DAILY_REPORT, POSTS_DIGEST, CONVERSIONS
 from launchpoint_client import fetch_campaign_metrics, check_campaign_visible, CampaignNotVisible
 from mcp_client import get_session
 from slack_reporter import send_report
@@ -42,8 +42,25 @@ def run_client(key: str):
         counts = count_videos(posts, client.min_views)
         metrics.total_posts = len(posts)
         metrics.unique_videos, metrics.qualifying_videos = counts.unique, counts.qualifying
+    if client.active_creators_only:
+        from launchpoint_client import fetch_all_posts, fetch_active_creator_ids
+
+        posted = {p["creatorId"] for p in fetch_all_posts(session, client.campaign_id)}
+        metrics.total_creators = len(fetch_active_creator_ids(session, client.campaign_id) & posted)
+
+    conversions, conversions_error = None, None
+    if client.has(CONVERSIONS):
+        from conversions import fetch_conversions, ConversionsUnavailable
+
+        try:
+            conversions = fetch_conversions(client)
+        except ConversionsUnavailable as e:
+            # Send the report without its conversions lines rather than wrong numbers.
+            conversions_error = e
+            print(f"ERROR [{client.name}] Conversions left out of the report: {e}", file=sys.stderr)
+
     print(f"[{client.name}] Sending Slack report...")
-    report_ts = send_report(metrics, client)
+    report_ts = send_report(metrics, client, conversions)
 
     if client.has(POSTS_DIGEST):
         from posts_digest import send_digest
@@ -51,6 +68,9 @@ def run_client(key: str):
         where = "in the report's thread" if report_ts else "as a separate message (no bot token)"
         count = send_digest(session, client, thread_ts=report_ts)
         print(f"[{client.name}] Sent posts digest ({count} posts) {where}.")
+    if conversions_error:
+        # Fail the run (after sending) so the missing section shows up in Actions.
+        raise RuntimeError(f"Report sent without conversions: {conversions_error}")
     print(f"[{client.name}] Done.")
 
 

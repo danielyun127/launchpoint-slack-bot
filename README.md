@@ -66,11 +66,11 @@ selectors break. The API route in Option A survives redesigns much better.
 
 ## Clients
 
-Each client (Krea, micro1, Tab, Wron AI, Bon Credit) has its own config in `clients.py`: name,
+Each client (Krea, micro1, Tab, Wron AI, Bon Credit, FOMO) has its own config in `clients.py`: name,
 LaunchPoint API key, campaign ID, Slack webhook, total budget, creator exclusions,
 alerts state file, alert start date, and which features are on. Krea keeps its
 original env var names; micro1 uses `MICRO1_*`, Tab uses `TAB_*`, Wron AI uses
-`WRON_*` and Bon Credit uses `BONCREDIT_*` (see `.env.example`).
+`WRON_*`, Bon Credit uses `BONCREDIT_*` and FOMO uses `FOMO_*` (see `.env.example`).
 
 Krea, micro1 and Tab share `LAUNCHPOINT_API_KEY`. Wron AI is on a separate LaunchPoint
 account and uses `WRON_LAUNCHPOINT_API_KEY`, which the workflows only pass to Wron AI's job.
@@ -80,12 +80,24 @@ the programs its key can see (LaunchPoint returns zeros, not an error, for a cam
 the key can't access). If it isn't, that client is skipped with an error, nothing is
 posted to Slack, and the run exits non-zero.
 
-| Feature | Krea | micro1 | Tab | Wron AI |
-|---|---|---|---|---|
-| Daily report | on | on | on | on |
-| Report goal line | 💰 budget (`KREA_TOTAL_BUDGET`) | 🎬 unique videos (`MICRO1_VIDEO_GOAL`, default 600) | 🎬 unique videos (`TAB_VIDEO_GOAL`, default 750) | 💰 budget (`WRON_TOTAL_BUDGET`) |
-| Milestone alerts | on (`alerted_posts.json`) | on (`alerted_posts_micro1.json`) | on (`alerted_posts_tab.json`) | on (`alerted_posts_wron.json`) |
-| Daily posts digest | off | on | off | off |
+| Feature | Krea | micro1 | Tab | Wron AI | FOMO |
+|---|---|---|---|---|---|
+| Daily report | on | on | on | on | on |
+| Report goal line | 💰 budget (`KREA_TOTAL_BUDGET`) | 🎬 unique videos (`MICRO1_VIDEO_GOAL`, default 600) | 🎬 unique videos (`TAB_VIDEO_GOAL`, default 750) | 💰 budget (`WRON_TOTAL_BUDGET`) | none (no budget or spend line) |
+| Milestone alerts | on (`alerted_posts.json`) | on (`alerted_posts_micro1.json`) | on (`alerted_posts_tab.json`) | on (`alerted_posts_wron.json`) | on (`alerted_posts_fomo.json`) |
+| Daily posts digest | off | on | off | off | off |
+
+FOMO's report differs from Krea's in two ways:
+- "Active creators" counts creators currently on the campaign (`list_creators`
+  `contractStatus` is `active`; removed creators are `completed`) who have posted.
+- Under the CPM line it shows conversions from FOMO's shared PostHog dashboard
+  (`FOMO_POSTHOG_SHARED_URL`, see `conversions.py`): all-time referrals, traders and
+  conversion rate from the totals tile, and referrals over the 7 full days before today
+  (PostHog's New York dates) from the daily referrals tile. The page's embedded data isn't
+  a documented API, so it's reloaded until the results are under 30 minutes old and checked
+  (expected tiles and columns, numbers that add up). If anything is off, the report goes
+  out without those lines and the run fails. Switching to a PostHog API key later only
+  means adding a data source in `conversions.py`.
 
 Bon Credit gets no Slack messages at all: no daily report, no milestone alerts, no digest.
 It gets a weekly email instead (see below).
@@ -97,7 +109,7 @@ the same creator posted within 15 minutes). A video counts toward the goal once 
 its posts reaches `MICRO1_MIN_VIEWS` / `TAB_MIN_VIEWS` (default 1000) views. Like the posts count, it only
 considers posts with view data.
 
-Every command takes `--client krea`, `--client micro1`, `--client tab`, `--client wron`, or `--client all`, and
+Every command takes `--client krea`, `--client micro1`, `--client tab`, `--client wron`, `--client fomo`, or `--client all`, and
 defaults to Krea.
 
 ## Running
@@ -151,9 +163,9 @@ past 5M. If a video jumps several milestones between runs, only the highest one 
 Each client's state file maps post ID to the highest milestone already alerted.
 The `Viral Video Alerts` GitHub Actions workflow runs this every 3 hours (or manually
 from the Actions tab) and commits the updated file back to the repo. Alert start dates default to
-2026-10-05 for Krea and 2026-10-13 for micro1, Tab and Wron AI; to override them there, set
-`ALERT_START_DATE` / `MICRO1_ALERT_START_DATE` / `TAB_ALERT_START_DATE` / `WRON_ALERT_START_DATE`
-as repository *variables* (not secrets).
+2026-10-05 for Krea, 2026-10-13 for micro1, Tab and Wron AI, and 2026-10-14 for FOMO; to
+override them there, set `ALERT_START_DATE` / `MICRO1_ALERT_START_DATE` / `TAB_ALERT_START_DATE` /
+`WRON_ALERT_START_DATE` / `FOMO_ALERT_START_DATE` as repository *variables* (not secrets).
 
 Both workflows run each client as a separate job, so one client failing doesn't
 stop the others.
