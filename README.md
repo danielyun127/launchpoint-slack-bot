@@ -66,11 +66,11 @@ selectors break. The API route in Option A survives redesigns much better.
 
 ## Clients
 
-Each client (Krea, micro1, Tab, Wron AI, Bon Credit, FOMO) has its own config in `clients.py`: name,
+Each client (Krea, micro1, Tab, Wron AI, Bon Credit, FOMO, Teamily) has its own config in `clients.py`: name,
 LaunchPoint API key, campaign ID, Slack webhook, total budget, creator exclusions,
 alerts state file, alert start date, and which features are on. Krea keeps its
 original env var names; micro1 uses `MICRO1_*`, Tab uses `TAB_*`, Wron AI uses
-`WRON_*`, Bon Credit uses `BONCREDIT_*` and FOMO uses `FOMO_*` (see `.env.example`).
+`WRON_*`, Bon Credit uses `BONCREDIT_*`, FOMO uses `FOMO_*` and Teamily uses `TEAMILY_*` (see `.env.example`).
 
 Krea, micro1 and Tab share `LAUNCHPOINT_API_KEY`. Wron AI is on a separate LaunchPoint
 account and uses `WRON_LAUNCHPOINT_API_KEY`, which the workflows only pass to Wron AI's job.
@@ -80,12 +80,12 @@ the programs its key can see (LaunchPoint returns zeros, not an error, for a cam
 the key can't access). If it isn't, that client is skipped with an error, nothing is
 posted to Slack, and the run exits non-zero.
 
-| Feature | Krea | micro1 | Tab | Wron AI | FOMO |
-|---|---|---|---|---|---|
-| Daily report | on | on | on | on | on |
-| Report goal line | 💰 budget (`KREA_TOTAL_BUDGET`) | 🎬 unique videos (`MICRO1_VIDEO_GOAL`, default 600) | 🎬 unique videos (`TAB_VIDEO_GOAL`, default 750) | 💰 budget (`WRON_TOTAL_BUDGET`) | none (no budget or spend line) |
-| Milestone alerts | on (`alerted_posts.json`) | on (`alerted_posts_micro1.json`) | on (`alerted_posts_tab.json`) | on (`alerted_posts_wron.json`) | on (`alerted_posts_fomo.json`) |
-| Daily posts digest | off | on | off | off | off |
+| Feature | Krea | micro1 | Tab | Wron AI | FOMO | Teamily |
+|---|---|---|---|---|---|---|
+| Daily report | on | on | on | on | on | on |
+| Report goal line | 💰 budget (`KREA_TOTAL_BUDGET`) | 🎬 unique videos (`MICRO1_VIDEO_GOAL`, default 600) | 🎬 unique videos (`TAB_VIDEO_GOAL`, default 750) | 💰 budget (`WRON_TOTAL_BUDGET`) | none (no budget or spend line) | 💰 budget (`TEAMILY_TOTAL_BUDGET`) |
+| Milestone alerts | on (`alerted_posts.json`) | on (`alerted_posts_micro1.json`) | on (`alerted_posts_tab.json`) | on (`alerted_posts_wron.json`) | on (`alerted_posts_fomo.json`) | on (`alerted_posts_teamily.json`) |
+| Daily posts digest | off | on | off | off | off | off |
 
 FOMO's report differs from Krea's in two ways:
 - "Active creators" counts creators currently on the campaign (`list_creators`
@@ -99,6 +99,16 @@ FOMO's report differs from Krea's in two ways:
   out without those lines and the run fails. Switching to a PostHog API key later only
   means adding a data source in `conversions.py`.
 
+Teamily gets the same report and milestone alerts as Krea, but as plain text in a
+Teamily group (`TEAMILY_GROUP_ID`) instead of Slack, posted by a Teamily agent
+(`teamily_client.py`: `POST https://teamily.ai/v1/agents/<TEAMILY_AGENT_ID>/responses`
+with `TEAMILY_AGENT_API_KEY`). Each send is a new agent thread with an Idempotency-Key
+(one per report day, one per post and milestone), and the agent is told to post the text
+verbatim and reply `SENT` or `FAILED`. Anything other than a completed, confirmed send
+(including `requires_approval`) fails the job without retrying or approving. The agent API
+is only called when there's something to send. `--test` alerts aren't supported for
+Teamily, since the group is the live client chat.
+
 Bon Credit gets no Slack messages at all: no daily report, no milestone alerts, no digest.
 It gets a weekly email instead (see below).
 
@@ -109,7 +119,7 @@ the same creator posted within 15 minutes). A video counts toward the goal once 
 its posts reaches `MICRO1_MIN_VIEWS` / `TAB_MIN_VIEWS` (default 1000) views. Like the posts count, it only
 considers posts with view data.
 
-Every command takes `--client krea`, `--client micro1`, `--client tab`, `--client wron`, `--client fomo`, or `--client all`, and
+Every command takes `--client krea`, `--client micro1`, `--client tab`, `--client wron`, `--client fomo`, `--client teamily`, or `--client all`, and
 defaults to Krea.
 
 ## Running
@@ -163,9 +173,9 @@ past 5M. If a video jumps several milestones between runs, only the highest one 
 Each client's state file maps post ID to the highest milestone already alerted.
 The `Viral Video Alerts` GitHub Actions workflow runs this every 3 hours (or manually
 from the Actions tab) and commits the updated file back to the repo. Alert start dates default to
-2026-10-05 for Krea, 2026-10-13 for micro1, Tab and Wron AI, and 2026-10-14 for FOMO; to
+2026-10-05 for Krea, 2026-10-13 for micro1, Tab and Wron AI, 2026-10-14 for FOMO, and 2026-10-20 for Teamily; to
 override them there, set `ALERT_START_DATE` / `MICRO1_ALERT_START_DATE` / `TAB_ALERT_START_DATE` /
-`WRON_ALERT_START_DATE` / `FOMO_ALERT_START_DATE` as repository *variables* (not secrets).
+`WRON_ALERT_START_DATE` / `FOMO_ALERT_START_DATE` / `TEAMILY_ALERT_START_DATE` as repository *variables* (not secrets).
 
 Both workflows run each client as a separate job, so one client failing doesn't
 stop the others.

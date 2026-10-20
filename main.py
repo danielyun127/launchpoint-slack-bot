@@ -1,7 +1,7 @@
 """
 Usage:
     python main.py                   # run Krea's report right now (good for testing)
-    python main.py --client micro1   # run one client's report (krea, micro1, tab, wron, fomo, or all)
+    python main.py --client micro1   # run one client's report (krea, micro1, tab, wron, fomo, teamily, or all)
     python main.py --schedule        # start a long-running process that fires every
                                       # day at 9:00 AM in REPORT_TIMEZONE
 """
@@ -59,7 +59,7 @@ def run_client(key: str):
             conversions_error = e
             print(f"ERROR [{client.name}] Conversions left out of the report: {e}", file=sys.stderr)
 
-    print(f"[{client.name}] Sending Slack report...")
+    print(f"[{client.name}] Sending {'Teamily' if client.teamily_group_id else 'Slack'} report...")
     report_ts = send_report(metrics, client, conversions)
 
     if client.has(POSTS_DIGEST):

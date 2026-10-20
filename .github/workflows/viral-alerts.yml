@@ -32,6 +32,8 @@ jobs:
             state_file: alerted_posts_wron.json
           - client: fomo
             state_file: alerted_posts_fomo.json
+          - client: teamily
+            state_file: alerted_posts_teamily.json
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
@@ -65,6 +67,12 @@ jobs:
           FOMO_CAMPAIGN_ID: ${{ secrets.FOMO_CAMPAIGN_ID }}
           FOMO_SLACK_WEBHOOK_URL: ${{ secrets.FOMO_SLACK_WEBHOOK_URL }}
           FOMO_ALERT_START_DATE: ${{ vars.FOMO_ALERT_START_DATE }}
+          TEAMILY_CAMPAIGN_ID: ${{ vars.TEAMILY_CAMPAIGN_ID }}
+          TEAMILY_ALERT_START_DATE: ${{ vars.TEAMILY_ALERT_START_DATE }}
+          TEAMILY_AGENT_ID: ${{ secrets.TEAMILY_AGENT_ID }}
+          TEAMILY_GROUP_ID: ${{ secrets.TEAMILY_GROUP_ID }}
+          # Only Teamily's job gets its Teamily agent key.
+          TEAMILY_AGENT_API_KEY: ${{ matrix.client == 'teamily' && secrets.TEAMILY_AGENT_API_KEY || '' }}
           # Wron AI is on its own LaunchPoint account; only its job gets this key.
           WRON_LAUNCHPOINT_API_KEY: ${{ matrix.client == 'wron' && secrets.WRON_LAUNCHPOINT_API_KEY || '' }}
         run: python viral_alerts.py --client ${{ matrix.client }}

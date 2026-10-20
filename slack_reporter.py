@@ -1,9 +1,12 @@
+import re
 import datetime
+from zoneinfo import ZoneInfo
 from launchpoint_client import CampaignMetrics
 from clients import ClientConfig
 from slack_client import post_message
 
 PROGRESS_BAR_LENGTH = 10
+PACIFIC = ZoneInfo("America/Los_Angeles")
 
 
 def _abbreviate(n: float) -> str:
@@ -114,6 +117,27 @@ def build_blocks(metrics: CampaignMetrics, client: ClientConfig, conversions=Non
     ]
 
 
+def _plain(mrkdwn: str) -> str:
+    """Drops Slack's *bold* / _italic_ markers; Teamily posts plain text."""
+    return re.sub(r"(?<!\w)([*_])(\S(?:.*?\S)?)\1(?!\w)", r"\2", mrkdwn)
+
+
+def build_text(metrics: CampaignMetrics, client: ClientConfig, conversions=None) -> str:
+    """The same report as build_blocks, as plain text (one paragraph per block)."""
+    parts = []
+    for block in build_blocks(metrics, client, conversions):
+        if block["type"] == "divider":
+            continue
+        parts.append(_plain(block["text"]["text"]))
+    return "\n\n".join(parts)
+
+
 def send_report(metrics: CampaignMetrics, client: ClientConfig, conversions=None) -> str:
     """Returns the message ts when posted via the Web API (for threading), else None."""
+    if client.teamily_group_id:
+        from teamily_client import send_text
+
+        day = datetime.datetime.now(PACIFIC).date().isoformat()
+        send_text(client, build_text(metrics, client, conversions), f"{client.key}-report-{day}")
+        return None
     return post_message(client, {"blocks": build_blocks(metrics, client, conversions)})

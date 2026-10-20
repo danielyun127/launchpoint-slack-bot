@@ -6,10 +6,10 @@ maps post ID to the highest milestone already alerted, so each milestone only
 alerts once.
 
 Usage:
-    python viral_alerts.py                          # Krea (or --client micro1 / tab / wron / all)
+    python viral_alerts.py                          # Krea (or --client micro1 / tab / wron / fomo / teamily / all)
     python viral_alerts.py --test [--client micro1] # post one [TEST] card, not recorded
                                                     # (Krea: the William Pham reel at 250K;
-                                                    # others: the client's top post)
+                                                    # others: the client's top post; not Teamily)
 """
 
 import sys
@@ -110,7 +110,31 @@ def _build_attachment(post: dict, milestone: int, test: bool = False, include_im
     }
 
 
+def _alert_text(post: dict, milestone: int) -> str:
+    """The milestone card as plain text, for Teamily."""
+    creator = post["contractorName"]
+    platform = PLATFORM_NAMES.get(post.get("platform", ""), post.get("platform", "").title())
+    posted = datetime.datetime.fromtimestamp(post["uploadedAt"] / 1000, PACIFIC)
+    return (
+        f"🚀 Milestone: {creator} 🚀\n\n"
+        f"{creator} hit a new Views milestone on {platform}!\n\n"
+        f"📈 {post['views']:,} Views\n"
+        f"🎯 Milestone: {milestone:,}\n\n"
+        f"📱 Platform: {platform}\n"
+        f"📅 Posted: {posted.strftime('%b %-d, %Y')}\n\n"
+        f"Open post ↗️ {post['url']}"
+    )
+
+
 def _send_alert(client: ClientConfig, post: dict, milestone: int, test: bool = False) -> None:
+    if client.teamily_group_id:
+        if test:
+            # Teamily groups are live client chats; no test cards.
+            raise RuntimeError("--test isn't supported for Teamily clients")
+        from teamily_client import send_text
+
+        send_text(client, _alert_text(post, milestone), f"{client.key}-alert-{post['id']}-{milestone}")
+        return
     fallback = f"🚀 {post['contractorName']} hit {milestone:,} views"
     try:
         post_message(client, {"text": fallback, "attachments": [_build_attachment(post, milestone, test)]})

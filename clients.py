@@ -5,7 +5,8 @@ ALERT_START_DATE, CLIENT_NAME) keep working unchanged. Krea, micro1 and Tab
 share LAUNCHPOINT_API_KEY; Wron AI is on a separate LaunchPoint account and
 uses WRON_LAUNCHPOINT_API_KEY. Bon Credit is emailed weekly instead of
 posted to Slack, and uses BONCREDIT_LAUNCHPOINT_API_KEY. FOMO uses
-LAUNCHPOINT_API_KEY.
+LAUNCHPOINT_API_KEY. Teamily uses LAUNCHPOINT_API_KEY and posts to a Teamily
+group through its Teamily agent instead of Slack.
 
 Env vars are read when a client is loaded, not at import, so running one
 client never requires the other client's secrets.
@@ -57,6 +58,11 @@ class ClientConfig:
     active_creators_only: bool = False
     # Shared PostHog dashboard the CONVERSIONS lines come from (conversions.py).
     posthog_shared_url: str = ""
+    # Set for clients whose report and alerts go to a Teamily group through a
+    # Teamily agent (teamily_client.py) instead of Slack.
+    teamily_agent_id: str = ""
+    teamily_agent_api_key: str = ""
+    teamily_group_id: str = ""
 
     def has(self, feature: str) -> bool:
         return feature in self.features
@@ -187,7 +193,28 @@ def _fomo() -> ClientConfig:
     )
 
 
-CLIENTS = {"krea": _krea, "micro1": _micro1, "tab": _tab, "wron": _wron, "boncredit": _boncredit, "fomo": _fomo}
+def _teamily() -> ClientConfig:
+    return ClientConfig(
+        key="teamily",
+        name="Teamily",
+        campaign_id=_env("TEAMILY_CAMPAIGN_ID", "7be7ffad-163a-48bf-8ed7-96dc752d4643"),
+        slack_webhook_url="",  # Teamily group only
+        # Creator budget, not Teamily API credits.
+        total_budget=_env("TEAMILY_TOTAL_BUDGET"),
+        video_goal=0,
+        min_views=0,
+        excluded_creators=set(),
+        alerts_state_file=os.path.join(BASE_DIR, "alerted_posts_teamily.json"),
+        alert_start_date=_date("TEAMILY_ALERT_START_DATE", "2026-10-20"),
+        features={DAILY_REPORT, MILESTONE_ALERTS},
+        launchpoint_api_key=_required("LAUNCHPOINT_API_KEY"),
+        teamily_agent_id=_required("TEAMILY_AGENT_ID"),
+        teamily_agent_api_key=_required("TEAMILY_AGENT_API_KEY"),
+        teamily_group_id=_required("TEAMILY_GROUP_ID"),
+    )
+
+
+CLIENTS = {"krea": _krea, "micro1": _micro1, "tab": _tab, "wron": _wron, "boncredit": _boncredit, "fomo": _fomo, "teamily": _teamily}
 
 
 def get_client(key: str) -> ClientConfig:
@@ -197,7 +224,7 @@ def get_client(key: str) -> ClientConfig:
 
 
 def client_keys_from_argv(argv: list, default: str = "krea") -> list:
-    """`--client krea` (or micro1, tab, wron, boncredit, fomo), or `--client all`. Defaults to Krea
+    """`--client krea` (or micro1, tab, wron, boncredit, fomo, teamily), or `--client all`. Defaults to Krea
     so plain `python main.py` behaves exactly as it did before."""
     key = default
     if "--client" in argv:
