@@ -2,16 +2,39 @@ name: Daily LaunchPoint Report
 
 on:
   schedule:
-    # 9:00 AM Pacific Daylight Time (UTC-7) = 16:00 UTC.
-    # NOTE: US DST ends the first Sunday of November. Once clocks fall back
-    # to Pacific Standard Time (UTC-8), this will fire at 8:00 AM PST
-    # instead of 9:00 AM. Update to '0 17 * * *' then (and back to
-    # '0 16 * * *' when DST resumes in March) if you want it locked to 9am.
+    # Daily at 9:00 AM Pacific. GitHub cron is UTC-only, so this fires at
+    # both 16:00 UTC (9am PDT) and 17:00 UTC (9am PST), and the gate job
+    # below lets through only the one that is 9am Pacific today. No changes
+    # needed when daylight saving starts or ends.
     - cron: "0 16 * * *"
+    - cron: "0 17 * * *"
   workflow_dispatch: {}
 
 jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      send: ${{ steps.gate.outputs.send }}
+    steps:
+      - name: Check it's 9am Pacific
+        id: gate
+        run: |
+          # Gate on which cron fired, not the current time, so a run GitHub
+          # starts late still sends exactly once. Manual runs always send.
+          offset=$(TZ=America/Los_Angeles date +%z)  # -0700 PDT, -0800 PST
+          if [ "${{ github.event_name }}" != "schedule" ] \
+            || { [ "$offset" = "-0700" ] && [ "${{ github.event.schedule }}" = "0 16 * * *" ]; } \
+            || { [ "$offset" = "-0800" ] && [ "${{ github.event.schedule }}" = "0 17 * * *" ]; }; then
+            echo "send=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Not 9am Pacific (offset $offset, cron '${{ github.event.schedule }}'); skipping."
+            echo "send=false" >> "$GITHUB_OUTPUT"
+          fi
+
   send-report:
+    needs: gate
+    # Skips every client's job on the run that isn't 9am Pacific.
+    if: needs.gate.outputs.send == 'true'
     runs-on: ubuntu-latest
     strategy:
       # Each client is its own job, so one failing doesn't stop the other.
