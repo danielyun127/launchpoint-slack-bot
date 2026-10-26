@@ -8,7 +8,12 @@ on:
     # needed when daylight saving starts or ends.
     - cron: "0 16 * * *"
     - cron: "0 17 * * *"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      client:
+        description: "One client to send (krea, micro1, tab, wron, fomo, teamily); empty sends all"
+        required: false
+        default: ""
 
 jobs:
   gate:
@@ -39,8 +44,11 @@ jobs:
     strategy:
       # Each client is its own job, so one failing doesn't stop the other.
       fail-fast: false
+      # Most clients share one LaunchPoint API key, which gets rate limited
+      # (429) when too many jobs call it at once.
+      max-parallel: 2
       matrix:
-        client: [krea, micro1, tab, wron, fomo, teamily]
+        client: ${{ fromJSON(inputs.client && format('["{0}"]', inputs.client) || '["krea", "micro1", "tab", "wron", "fomo", "teamily"]') }}
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
