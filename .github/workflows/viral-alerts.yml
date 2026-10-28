@@ -31,10 +31,11 @@ jobs:
             state_file: alerted_posts_micro1.json
           - client: tab
             state_file: alerted_posts_tab.json
-          - client: wron
-            state_file: alerted_posts_wron.json
-          - client: fomo
-            state_file: alerted_posts_fomo.json
+          # Wron AI and FOMO are paused; to resume, add back:
+          #   - client: wron
+          #     state_file: alerted_posts_wron.json
+          #   - client: fomo
+          #     state_file: alerted_posts_fomo.json
           - client: teamily
             state_file: alerted_posts_teamily.json
     steps:

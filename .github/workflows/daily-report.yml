@@ -48,7 +48,8 @@ jobs:
       # (429) when too many jobs call it at once.
       max-parallel: 2
       matrix:
-        client: ${{ fromJSON(inputs.client && format('["{0}"]', inputs.client) || '["krea", "micro1", "tab", "wron", "fomo", "teamily"]') }}
+        # Wron AI and FOMO are paused: add "wron" / "fomo" back here to resume.
+        client: ${{ fromJSON(inputs.client && format('["{0}"]', inputs.client) || '["krea", "micro1", "tab", "teamily"]') }}
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
