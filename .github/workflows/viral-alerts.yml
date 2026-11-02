@@ -25,13 +25,13 @@ jobs:
       max-parallel: 2
       matrix:
         include:
-          - client: krea
-            state_file: alerted_posts.json
           - client: micro1
             state_file: alerted_posts_micro1.json
           - client: tab
             state_file: alerted_posts_tab.json
-          # Wron AI and FOMO are paused; to resume, add back:
+          # Krea, Wron AI and FOMO are paused; to resume, add back:
+          #   - client: krea
+          #     state_file: alerted_posts.json
           #   - client: wron
           #     state_file: alerted_posts_wron.json
           #   - client: fomo
