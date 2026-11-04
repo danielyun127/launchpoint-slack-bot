@@ -14,6 +14,14 @@ on:
         description: "One client to send (krea, micro1, tab, wron, fomo, teamily); empty sends all"
         required: false
         default: ""
+      note:
+        description: "One-off: line to add above the report. Needs a client."
+        required: false
+        default: ""
+      key_suffix:
+        description: "One-off: Teamily Idempotency-Key suffix, so a re-send isn't dropped as a duplicate (e.g. corrected). Needs a client."
+        required: false
+        default: ""
 
 jobs:
   gate:
@@ -64,6 +72,8 @@ jobs:
 
       - name: Send report
         env:
+          REPORT_NOTE: ${{ inputs.client && inputs.note || '' }}
+          REPORT_KEY_SUFFIX: ${{ inputs.client && inputs.key_suffix || '' }}
           LAUNCHPOINT_MCP_URL: ${{ secrets.LAUNCHPOINT_MCP_URL }}
           LAUNCHPOINT_API_KEY: ${{ secrets.LAUNCHPOINT_API_KEY }}
           LAUNCHPOINT_CAMPAIGN_ID: ${{ secrets.LAUNCHPOINT_CAMPAIGN_ID }}

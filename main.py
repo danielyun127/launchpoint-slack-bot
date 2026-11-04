@@ -6,6 +6,7 @@ Usage:
                                       # day at 9:00 AM in REPORT_TIMEZONE
 """
 
+import os
 import sys
 import traceback
 from dotenv import load_dotenv
@@ -57,7 +58,12 @@ def run_client(key: str):
             print(f"ERROR [{client.name}] Conversions left out of the report: {e}", file=sys.stderr)
 
     print(f"[{client.name}] Sending {'Teamily' if client.teamily_group_id else 'Slack'} report...")
-    report_ts = send_report(metrics, client, conversions)
+    # Unset except on a one-off manual re-send (see the workflow's note and key_suffix inputs).
+    report_ts = send_report(
+        metrics, client, conversions,
+        note=os.environ.get("REPORT_NOTE", "").strip(),
+        key_suffix=os.environ.get("REPORT_KEY_SUFFIX", "").strip(),
+    )
 
     if client.has(POSTS_DIGEST):
         from posts_digest import send_digest
@@ -88,7 +94,6 @@ def run_once(keys: list):
 
 
 def run_scheduled(keys: list):
-    import os
     from apscheduler.schedulers.blocking import BlockingScheduler
 
     tz = os.environ.get("REPORT_TIMEZONE", "America/Los_Angeles")

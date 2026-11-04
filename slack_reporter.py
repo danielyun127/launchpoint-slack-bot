@@ -59,7 +59,7 @@ def _conversions_text(conversions) -> str:
     )
 
 
-def build_blocks(metrics: CampaignMetrics, client: ClientConfig, conversions=None) -> list:
+def build_blocks(metrics: CampaignMetrics, client: ClientConfig, conversions=None, note: str = "") -> list:
     today = datetime.date.today().strftime("%b %d, %Y")
 
     if metrics.top_creators_7d:
@@ -85,6 +85,7 @@ def build_blocks(metrics: CampaignMetrics, client: ClientConfig, conversions=Non
         posts_text += f" ({metrics.unique_videos:,} unique)"
 
     return [
+        *([{"type": "section", "text": {"type": "mrkdwn", "text": note}}] if note else []),
         {
             "type": "header",
             "text": {"type": "plain_text", "text": f"📊 {client.name} — Campaign Report ({today})"},
@@ -122,22 +123,28 @@ def _plain(mrkdwn: str) -> str:
     return re.sub(r"(?<!\w)([*_])(\S(?:.*?\S)?)\1(?!\w)", r"\2", mrkdwn)
 
 
-def build_text(metrics: CampaignMetrics, client: ClientConfig, conversions=None) -> str:
+def build_text(metrics: CampaignMetrics, client: ClientConfig, conversions=None, note: str = "") -> str:
     """The same report as build_blocks, as plain text (one paragraph per block)."""
     parts = []
-    for block in build_blocks(metrics, client, conversions):
+    for block in build_blocks(metrics, client, conversions, note):
         if block["type"] == "divider":
             continue
         parts.append(_plain(block["text"]["text"]))
     return "\n\n".join(parts)
 
 
-def send_report(metrics: CampaignMetrics, client: ClientConfig, conversions=None) -> str:
-    """Returns the message ts when posted via the Web API (for threading), else None."""
+def send_report(metrics: CampaignMetrics, client: ClientConfig, conversions=None, note: str = "", key_suffix: str = "") -> str:
+    """Returns the message ts when posted via the Web API (for threading), else None.
+    note and key_suffix are for one-off re-sends, e.g. a corrected report: note goes
+    above the report, and key_suffix keeps Teamily from dropping the send as a duplicate
+    of the day's report."""
     if client.teamily_group_id:
         from teamily_client import send_text
 
         day = datetime.datetime.now(PACIFIC).date().isoformat()
-        send_text(client, build_text(metrics, client, conversions), f"{client.key}-report-{day}")
+        key = f"{client.key}-report-{day}" + (f"-{key_suffix}" if key_suffix else "")
+        text = build_text(metrics, client, conversions, note)
+        print(f"  Idempotency-Key: {key}\n{text}")
+        send_text(client, text, key)
         return None
-    return post_message(client, {"blocks": build_blocks(metrics, client, conversions)})
+    return post_message(client, {"blocks": build_blocks(metrics, client, conversions, note)})

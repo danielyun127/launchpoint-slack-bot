@@ -70,7 +70,7 @@ def send_text(client: ClientConfig, text: str, idempotency_key: str) -> dict:
     status = data.get("status")
     reply = _redact((data.get("output") or {}).get("text") or "", key)
     credits = (data.get("usage") or {}).get("credits")
-    print(f"  Teamily run {data.get('run_id')}: status={status}, credits={credits}")
+    print(f"  Teamily run {data.get('run_id')}: status={status}, credits={credits}, reply={reply!r}")
     if status != "completed":
         # Includes requires_approval: never approved here.
         raise TeamilySendError(f"Teamily run not completed (status={status}, {idempotency_key}): {body}")
