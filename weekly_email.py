@@ -94,12 +94,15 @@ def gather(client: ClientConfig) -> WeeklyData:
     session = get_session(client.launchpoint_api_key)
     check_campaign_visible(session, client.campaign_id)
     metrics = fetch_campaign_metrics(client.campaign_id, client.excluded_creators, client.launchpoint_api_key)
+    # The email reports billed spend, not the dashboard's creator-earnings Spend tile.
+    metrics.total_spend = metrics.billed_spend
+    metrics.cpm = round(metrics.billed_spend / metrics.total_views * 1000, 2) if metrics.total_views else 0.0
 
     today = datetime.datetime.now(PACIFIC).date()
     week_start = today - datetime.timedelta(days=7)
     start_ms = int(datetime.datetime.combine(week_start, datetime.time(), PACIFIC).timestamp() * 1000)
 
-    # Same rule as the Slack reports' posts count: posts with view data (views > 0).
+    # Posts with view data (views > 0), the platform posts behind the videos counted below.
     posts = [
         p for p in fetch_all_posts(session, client.campaign_id)
         if (p.get("views") or 0) > 0

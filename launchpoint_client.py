@@ -39,11 +39,13 @@ class CampaignMetrics:
     # analytics_overview tool exposes views/engagement/earnings, not
     # clicks or conversions, so those aren't modeled here.
     #
-    # total_spend comes from the separate REST payouts/spend endpoint
+    # Spend comes from the separate REST payouts/spend endpoint
     # (docs.launchpointhq.com/api-reference/v1/payouts/report-creator-spend-per-program),
-    # not the MCP server — this is the authoritative number behind the
-    # dashboard's Spend tile. It breaks down as:
-    #   spend = paid + paid_off_platform + awaiting + tracking
+    # not the MCP server. total_spend is what the dashboard's Spend tile shows,
+    # creator earnings (bonuses included):
+    #   total_spend = paid + paid_off_platform + awaiting + tracking
+    # billed_spend is that endpoint's "spend" field, what the customer is
+    # billed: creator cost plus platform fee, or signed CPM pricing.
     # base_creator_payouts is get_analytics_overview's totalEarnings, which
     # is identical to this endpoint's "paid" field (both ~$53,535) — kept as
     # its own field since it comes from a different endpoint.
@@ -60,6 +62,7 @@ class CampaignMetrics:
     awaiting: float = 0.0
     tracking: float = 0.0
     total_spend: float = 0.0
+    billed_spend: float = 0.0
     cpm: float = 0.0       # total_spend based — matches the dashboard's CPM tile
     base_cpm: float = 0.0  # base_creator_payouts based only
     top_creators: list = field(default_factory=list)  # [{"name": str, "views": int}]
@@ -101,34 +104,6 @@ def _mcp_json(result: dict) -> dict:
         return result["structuredContent"]
     text = result.get("content", [{}])[0].get("text", "{}")
     return json.loads(text)
-
-
-def _count_posts_with_view_data(session, program_id: str) -> int:
-    """
-    The dashboard's "Posts" tile (e.g. "5.5k") counts posts that have picked up
-    view data, not every post row LaunchPoint has recorded. get_analytics_overview's
-    summary.totalPosts includes posts still at 0 views (not yet synced/hydrated),
-    which is why it reads noticeably higher than the dashboard (e.g. 6,088 vs "5.5k").
-    There's no server-side filter for this, so we page through list_posts and count
-    client-side.
-    """
-    count = 0
-    page = 1
-    while True:
-        result = session.call_tool(
-            "list_posts",
-            {"program_ids": [program_id], "limit": 500, "page": page},
-        )
-        payload = _mcp_json(result)
-        rows = payload.get("data", [])
-        if not rows:
-            break
-        count += sum(1 for r in rows if (r.get("views") or 0) > 0)
-        total_pages = payload.get("totalPages", 1)
-        if page >= total_pages:
-            break
-        page += 1
-    return count
 
 
 def fetch_all_posts(session, campaign_id: str) -> list:
@@ -280,13 +255,9 @@ def fetch_via_mcp(campaign_id: str = CAMPAIGN_ID, excluded: set = EXCLUDED_CREAT
     total_comments = int(summary.get("totalComments", 0))
     total_shares = int(summary.get("totalShares", 0))
 
-    # summary.engagementRate additionally folds in totalBookmarks, which is why
-    # it reads ~2.46% while the dashboard's Engagement tile shows 1.4% — the
-    # dashboard defines engagement as (likes + comments + shares) / views only.
-    engagement_rate = (
-        round((total_likes + total_comments + total_shares) / total_views * 100, 2)
-        if total_views else 0.0
-    )
+    # The dashboard's Engagement tile is likes + comments + shares + bookmarks,
+    # which is what summary.engagementRate is based on. One decimal, like the tile.
+    engagement_rate = round(float(summary.get("engagementRate", 0)), 1)
 
     base_creator_payouts = float(summary.get("totalEarnings", 0))
 
@@ -295,12 +266,13 @@ def fetch_via_mcp(campaign_id: str = CAMPAIGN_ID, excluded: set = EXCLUDED_CREAT
     paid_off_platform = float(spend_report.get("paidOffPlatform", 0))
     awaiting = float(spend_report.get("awaiting", 0))
     tracking = float(spend_report.get("tracking", 0))
-    total_spend = float(spend_report.get("spend", paid + paid_off_platform + awaiting + tracking))
+    total_spend = paid + paid_off_platform + awaiting + tracking
 
     return CampaignMetrics(
         total_views=total_views,
         total_creators=int(summary.get("uniqueCreators", 0)),
-        total_posts=_count_posts_with_view_data(session, campaign_id),
+        # Every post, including those still at 0 views, like the dashboard's Posts tile.
+        total_posts=int(summary.get("totalPosts", 0)),
         total_likes=total_likes,
         total_comments=total_comments,
         total_shares=total_shares,
@@ -311,6 +283,7 @@ def fetch_via_mcp(campaign_id: str = CAMPAIGN_ID, excluded: set = EXCLUDED_CREAT
         awaiting=awaiting,
         tracking=tracking,
         total_spend=total_spend,
+        billed_spend=float(spend_report.get("spend", total_spend)),
         cpm=round(total_spend / total_views * 1000, 2) if total_views else 0.0,
         base_cpm=round(base_creator_payouts / total_views * 1000, 2) if total_views else 0.0,
         top_creators=[

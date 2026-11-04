@@ -30,17 +30,14 @@ def run_client(key: str):
         from launchpoint_client import fetch_all_posts
         from unique_videos import count_videos
 
-        # Same post set as the report's "posts" number: posts with view data
-        # (views > 0), matching the dashboard's Posts tile. Posts still at 0
-        # views haven't been synced by LaunchPoint yet. Both numbers come from
-        # this one fetch so they always agree.
+        # Unique videos only count posts with view data (views > 0). Posts still
+        # at 0 views haven't been synced by LaunchPoint yet.
         posts = [
             p for p in fetch_all_posts(session, client.campaign_id)
             if (p.get("views") or 0) > 0
             and p.get("contractorName", "").strip().lower() not in client.excluded_creators
         ]
         counts = count_videos(posts, client.min_views)
-        metrics.total_posts = len(posts)
         metrics.unique_videos, metrics.qualifying_videos = counts.unique, counts.qualifying
     if client.active_creators_only:
         from launchpoint_client import fetch_all_posts, fetch_active_creator_ids

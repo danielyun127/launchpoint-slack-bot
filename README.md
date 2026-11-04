@@ -116,8 +116,8 @@ micro1's and Tab's video goals count unique videos, not posts: one video cross-p
 TikTok, Instagram, YouTube and Facebook counts once (`unique_videos.py` groups posts by
 LaunchPoint's `crossPostGroupId`, splits same-platform repeats, and merges groups from
 the same creator posted within 15 minutes). A video counts toward the goal once any of
-its posts reaches `MICRO1_MIN_VIEWS` / `TAB_MIN_VIEWS` (default 1000) views. Like the posts count, it only
-considers posts with view data.
+its posts reaches `MICRO1_MIN_VIEWS` / `TAB_MIN_VIEWS` (default 1000) views. It only considers posts
+with view data, while the report's posts count is the dashboard's total, including posts still at 0 views.
 
 Every command takes `--client krea`, `--client micro1`, `--client tab`, `--client wron`, `--client fomo`, `--client teamily`, or `--client all`, and
 defaults to Krea.
