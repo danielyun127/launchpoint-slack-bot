@@ -94,9 +94,6 @@ def gather(client: ClientConfig) -> WeeklyData:
     session = get_session(client.launchpoint_api_key)
     check_campaign_visible(session, client.campaign_id)
     metrics = fetch_campaign_metrics(client.campaign_id, client.excluded_creators, client.launchpoint_api_key)
-    # The email reports billed spend, not the dashboard's creator-earnings Spend tile.
-    metrics.total_spend = metrics.billed_spend
-    metrics.cpm = round(metrics.billed_spend / metrics.total_views * 1000, 2) if metrics.total_views else 0.0
 
     today = datetime.datetime.now(PACIFIC).date()
     week_start = today - datetime.timedelta(days=7)
@@ -157,7 +154,6 @@ def _totals(data: WeeklyData) -> list:
         ("Total views", f"{m.total_views:,}", ""),
         ("Videos posted", f"{data.total_videos:,}", _shared(m.total_posts)),
         ("Active creators", f"{m.total_creators:,}", ""),
-        ("Cost per 1,000 views", f"${m.cpm:,.2f}", ""),
     ]
 
 

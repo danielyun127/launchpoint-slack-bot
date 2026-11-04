@@ -44,8 +44,8 @@ class CampaignMetrics:
     # not the MCP server. total_spend is what the dashboard's Spend tile shows,
     # creator earnings (bonuses included):
     #   total_spend = paid + paid_off_platform + awaiting + tracking
-    # billed_spend is that endpoint's "spend" field, what the customer is
-    # billed: creator cost plus platform fee, or signed CPM pricing.
+    # That endpoint's own "spend" field is what the customer is billed (creator
+    # cost plus platform fee, or signed CPM pricing), so it isn't used here.
     # base_creator_payouts is get_analytics_overview's totalEarnings, which
     # is identical to this endpoint's "paid" field (both ~$53,535) — kept as
     # its own field since it comes from a different endpoint.
@@ -62,7 +62,6 @@ class CampaignMetrics:
     awaiting: float = 0.0
     tracking: float = 0.0
     total_spend: float = 0.0
-    billed_spend: float = 0.0
     cpm: float = 0.0       # total_spend based — matches the dashboard's CPM tile
     base_cpm: float = 0.0  # base_creator_payouts based only
     top_creators: list = field(default_factory=list)  # [{"name": str, "views": int}]
@@ -283,7 +282,6 @@ def fetch_via_mcp(campaign_id: str = CAMPAIGN_ID, excluded: set = EXCLUDED_CREAT
         awaiting=awaiting,
         tracking=tracking,
         total_spend=total_spend,
-        billed_spend=float(spend_report.get("spend", total_spend)),
         cpm=round(total_spend / total_views * 1000, 2) if total_views else 0.0,
         base_cpm=round(base_creator_payouts / total_views * 1000, 2) if total_views else 0.0,
         top_creators=[
