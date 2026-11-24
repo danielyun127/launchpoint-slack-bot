@@ -6,7 +6,8 @@ share LAUNCHPOINT_API_KEY; Wron AI is on a separate LaunchPoint account and
 uses WRON_LAUNCHPOINT_API_KEY. Bon Credit is emailed weekly instead of
 posted to Slack, and uses BONCREDIT_LAUNCHPOINT_API_KEY. FOMO uses
 LAUNCHPOINT_API_KEY. Teamily uses LAUNCHPOINT_API_KEY and posts to a Teamily
-group through its Teamily agent instead of Slack.
+group through its Teamily agent instead of Slack; it has two campaigns (US and
+Europe cohorts), reported together.
 
 Env vars are read when a client is loaded, not at import, so running one
 client never requires the other client's secrets.
@@ -14,7 +15,7 @@ client never requires the other client's secrets.
 
 import os
 import datetime
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -24,6 +25,18 @@ MILESTONE_ALERTS = "milestone_alerts"
 POSTS_DIGEST = "posts_digest"
 WEEKLY_EMAIL = "weekly_email"
 CONVERSIONS = "conversions"  # PostHog referrals/traders lines in the daily report
+
+
+@dataclass
+class Cohort:
+    """One of several LaunchPoint campaigns reported together for one client
+    (e.g. Teamily's US and Europe cohorts). Each has its own report section
+    and its own milestone alerts state."""
+    label: str  # report section heading, e.g. "🇺🇸 US cohort"
+    campaign_id: str
+    alerts_state_file: str
+    alert_start_date: datetime.date
+    alert_flag: str = ""  # prefixed to this cohort's milestone alerts, e.g. "🇪🇺"
 
 
 @dataclass
@@ -63,6 +76,11 @@ class ClientConfig:
     teamily_agent_id: str = ""
     teamily_agent_api_key: str = ""
     teamily_group_id: str = ""
+    # Set for clients with more than one campaign: the report has one budget line
+    # (combined spend) and a section per cohort, and alerts check every cohort.
+    cohorts: list = field(default_factory=list)
+    # Prefixed to milestone alerts (set per cohort by viral_alerts.py).
+    alert_flag: str = ""
 
     def has(self, feature: str) -> bool:
         return feature in self.features
@@ -194,23 +212,37 @@ def _fomo() -> ClientConfig:
 
 
 def _teamily() -> ClientConfig:
+    campaign_id = _env("TEAMILY_CAMPAIGN_ID", "7be7ffad-163a-48bf-8ed7-96dc752d4643")
+    alerts_state_file = os.path.join(BASE_DIR, "alerted_posts_teamily.json")
+    alert_start_date = _date("TEAMILY_ALERT_START_DATE", "2026-10-20")
     return ClientConfig(
         key="teamily",
         name="Teamily",
-        campaign_id=_env("TEAMILY_CAMPAIGN_ID", "7be7ffad-163a-48bf-8ed7-96dc752d4643"),
+        campaign_id=campaign_id,
         slack_webhook_url="",  # Teamily group only
-        # Creator budget, not Teamily API credits.
+        # Creator budget, not Teamily API credits. Covers both cohorts.
         total_budget=_env("TEAMILY_TOTAL_BUDGET"),
         video_goal=0,
         min_views=0,
         excluded_creators=set(),
-        alerts_state_file=os.path.join(BASE_DIR, "alerted_posts_teamily.json"),
-        alert_start_date=_date("TEAMILY_ALERT_START_DATE", "2026-10-20"),
+        alerts_state_file=alerts_state_file,
+        alert_start_date=alert_start_date,
         features={DAILY_REPORT, MILESTONE_ALERTS},
         launchpoint_api_key=_required("LAUNCHPOINT_API_KEY"),
         teamily_agent_id=_required("TEAMILY_AGENT_ID"),
         teamily_agent_api_key=_required("TEAMILY_AGENT_API_KEY"),
         teamily_group_id=_required("TEAMILY_GROUP_ID"),
+        cohorts=[
+            Cohort("🇺🇸 US cohort", campaign_id, alerts_state_file, alert_start_date),
+            Cohort(
+                "🇪🇺 Europe cohort",
+                _env("TEAMILY_EU_CAMPAIGN_ID", "b8115b33-044b-46c5-9c1e-c1dab809ad7a"),
+                os.path.join(BASE_DIR, "alerted_posts_teamily_eu.json"),
+                # Added 2026-11-23; earlier Europe videos aren't alerted.
+                _date("TEAMILY_EU_ALERT_START_DATE", "2026-11-23"),
+                alert_flag="🇪🇺",
+            ),
+        ],
     )
 
 

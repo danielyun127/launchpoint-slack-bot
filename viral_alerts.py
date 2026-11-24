@@ -15,6 +15,7 @@ Usage:
 import sys
 import json
 import datetime
+import dataclasses
 import traceback
 from zoneinfo import ZoneInfo
 
@@ -110,13 +111,13 @@ def _build_attachment(post: dict, milestone: int, test: bool = False, include_im
     }
 
 
-def _alert_text(post: dict, milestone: int) -> str:
-    """The milestone card as plain text, for Teamily."""
+def _alert_text(post: dict, milestone: int, flag: str = "") -> str:
+    """The milestone card as plain text, for Teamily. flag (e.g. "🇪🇺") marks the cohort."""
     creator = post["contractorName"]
     platform = PLATFORM_NAMES.get(post.get("platform", ""), post.get("platform", "").title())
     posted = datetime.datetime.fromtimestamp(post["uploadedAt"] / 1000, PACIFIC)
     return (
-        f"🚀 Milestone: {creator} 🚀\n\n"
+        f"{flag + ' ' if flag else ''}🚀 Milestone: {creator} 🚀\n\n"
         f"{creator} hit a new Views milestone on {platform}!\n\n"
         f"📈 {post['views']:,} Views\n"
         f"🎯 Milestone: {milestone:,}\n\n"
@@ -133,7 +134,7 @@ def _send_alert(client: ClientConfig, post: dict, milestone: int, test: bool = F
             raise RuntimeError("--test isn't supported for Teamily clients")
         from teamily_client import send_text
 
-        send_text(client, _alert_text(post, milestone), f"{client.key}-alert-{post['id']}-{milestone}")
+        send_text(client, _alert_text(post, milestone, client.alert_flag), f"{client.key}-alert-{post['id']}-{milestone}")
         return
     fallback = f"🚀 {post['contractorName']} hit {milestone:,} views"
     try:
@@ -199,6 +200,24 @@ def run_test(client: ClientConfig) -> None:
     print(f"[{client.name}] Sent [TEST] alert: {post['contractorName']} — {milestone:,} milestone ({post['views']:,} views)")
 
 
+def _alert_targets(client: ClientConfig) -> list:
+    """The client itself, or one copy per cohort (its campaign, state file,
+    start date and flag) for a client with several campaigns."""
+    if not client.cohorts:
+        return [client]
+    return [
+        dataclasses.replace(
+            client,
+            name=f"{client.name} {c.label}",
+            campaign_id=c.campaign_id,
+            alerts_state_file=c.alerts_state_file,
+            alert_start_date=c.alert_start_date,
+            alert_flag=c.alert_flag,
+        )
+        for c in client.cohorts
+    ]
+
+
 def main() -> None:
     failed = []
     for key in client_keys_from_argv(sys.argv):
@@ -208,8 +227,17 @@ def main() -> None:
                 continue
             if "--test" in sys.argv:
                 run_test(client)
-            else:
-                run(client)
+                continue
+            # Every cohort is checked even if an earlier one fails.
+            errors = []
+            for target in _alert_targets(client):
+                try:
+                    run(target)
+                except Exception as e:
+                    traceback.print_exc()
+                    errors.append(e)
+            if errors:
+                raise errors[0]
         except CampaignNotVisible as e:
             print(f"ERROR [{key}] Skipped, nothing posted to Slack: {e}", file=sys.stderr)
             failed.append(key)

@@ -24,9 +24,20 @@ def run_client(key: str):
     if not client.has(DAILY_REPORT):
         return
     session = get_session(client.launchpoint_api_key)
-    check_campaign_visible(session, client.campaign_id)
-    print(f"[{client.name}] Fetching LaunchPoint metrics...")
-    metrics = fetch_campaign_metrics(client.campaign_id, client.excluded_creators, client.launchpoint_api_key)
+    cohorts = None
+    if client.cohorts:
+        # Check every cohort before fetching anything, so a missing one sends nothing.
+        for c in client.cohorts:
+            check_campaign_visible(session, c.campaign_id)
+        cohorts = []
+        for c in client.cohorts:
+            print(f"[{client.name}] Fetching LaunchPoint metrics ({c.label})...")
+            cohorts.append((c.label, fetch_campaign_metrics(c.campaign_id, client.excluded_creators, client.launchpoint_api_key)))
+        metrics = None
+    else:
+        check_campaign_visible(session, client.campaign_id)
+        print(f"[{client.name}] Fetching LaunchPoint metrics...")
+        metrics = fetch_campaign_metrics(client.campaign_id, client.excluded_creators, client.launchpoint_api_key)
     if client.video_goal:
         from launchpoint_client import fetch_all_posts
         from unique_videos import count_videos
@@ -63,6 +74,7 @@ def run_client(key: str):
         metrics, client, conversions,
         note=os.environ.get("REPORT_NOTE", "").strip(),
         key_suffix=os.environ.get("REPORT_KEY_SUFFIX", "").strip(),
+        cohorts=cohorts,
     )
 
     if client.has(POSTS_DIGEST):

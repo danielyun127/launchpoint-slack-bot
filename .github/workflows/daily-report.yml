@@ -97,6 +97,7 @@ jobs:
           FOMO_SLACK_WEBHOOK_URL: ${{ secrets.FOMO_SLACK_WEBHOOK_URL }}
           FOMO_POSTHOG_SHARED_URL: ${{ secrets.FOMO_POSTHOG_SHARED_URL }}
           TEAMILY_CAMPAIGN_ID: ${{ vars.TEAMILY_CAMPAIGN_ID }}
+          TEAMILY_EU_CAMPAIGN_ID: ${{ secrets.TEAMILY_EU_CAMPAIGN_ID }}
           TEAMILY_TOTAL_BUDGET: ${{ secrets.TEAMILY_TOTAL_BUDGET }}
           TEAMILY_AGENT_ID: ${{ secrets.TEAMILY_AGENT_ID }}
           TEAMILY_GROUP_ID: ${{ secrets.TEAMILY_GROUP_ID }}

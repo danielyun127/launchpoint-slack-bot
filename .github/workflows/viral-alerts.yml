@@ -36,8 +36,9 @@ jobs:
           #     state_file: alerted_posts_wron.json
           #   - client: fomo
           #     state_file: alerted_posts_fomo.json
+          # Teamily has two campaigns (US and Europe cohorts), one state file each.
           - client: teamily
-            state_file: alerted_posts_teamily.json
+            state_file: alerted_posts_teamily.json alerted_posts_teamily_eu.json
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
@@ -73,6 +74,8 @@ jobs:
           FOMO_ALERT_START_DATE: ${{ vars.FOMO_ALERT_START_DATE }}
           TEAMILY_CAMPAIGN_ID: ${{ vars.TEAMILY_CAMPAIGN_ID }}
           TEAMILY_ALERT_START_DATE: ${{ vars.TEAMILY_ALERT_START_DATE }}
+          TEAMILY_EU_CAMPAIGN_ID: ${{ secrets.TEAMILY_EU_CAMPAIGN_ID }}
+          TEAMILY_EU_ALERT_START_DATE: ${{ vars.TEAMILY_EU_ALERT_START_DATE }}
           TEAMILY_AGENT_ID: ${{ secrets.TEAMILY_AGENT_ID }}
           TEAMILY_GROUP_ID: ${{ secrets.TEAMILY_GROUP_ID }}
           # Only Teamily's job gets its Teamily agent key.
@@ -81,19 +84,19 @@ jobs:
           WRON_LAUNCHPOINT_API_KEY: ${{ matrix.client == 'wron' && secrets.WRON_LAUNCHPOINT_API_KEY || '' }}
         run: python viral_alerts.py --client ${{ matrix.client }}
 
-      - name: Commit ${{ matrix.state_file }}
+      - name: Commit alerts state
         # Run even if the alert step failed partway, so alerts that did go out are recorded.
         if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898333+github-actions[bot]@users.noreply.github.com"
-          git add "${{ matrix.state_file }}"
+          git add ${{ matrix.state_file }}  # space-separated list
           if git diff --cached --quiet; then
             echo "No new alerts to record."
           else
             git commit -m "Record ${{ matrix.client }} viral alerts [skip ci]"
             # The other client's job may push at the same moment; each touches
-            # only its own state file, so rebasing onto it never conflicts.
+            # only its own state files, so rebasing onto it never conflicts.
             for attempt in 1 2 3; do
               git pull --rebase && git push && break
               sleep $((attempt * 5))

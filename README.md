@@ -83,8 +83,8 @@ posted to Slack, and the run exits non-zero.
 | Feature | Krea | micro1 | Tab | Wron AI | FOMO | Teamily |
 |---|---|---|---|---|---|---|
 | Daily report | on | on | on | on | on | on |
-| Report goal line | 💰 budget (`KREA_TOTAL_BUDGET`) | 🎬 unique videos (`MICRO1_VIDEO_GOAL`, default 600) | 🎬 unique videos (`TAB_VIDEO_GOAL`, default 750) | 💰 budget (`WRON_TOTAL_BUDGET`) | none (no budget or spend line) | 💰 budget (`TEAMILY_TOTAL_BUDGET`) |
-| Milestone alerts | on (`alerted_posts.json`) | on (`alerted_posts_micro1.json`) | on (`alerted_posts_tab.json`) | on (`alerted_posts_wron.json`) | on (`alerted_posts_fomo.json`) | on (`alerted_posts_teamily.json`) |
+| Report goal line | 💰 budget (`KREA_TOTAL_BUDGET`) | 🎬 unique videos (`MICRO1_VIDEO_GOAL`, default 600) | 🎬 unique videos (`TAB_VIDEO_GOAL`, default 750) | 💰 budget (`WRON_TOTAL_BUDGET`) | none (no budget or spend line) | 💰 budget (`TEAMILY_TOTAL_BUDGET`, both cohorts' spend combined) |
+| Milestone alerts | on (`alerted_posts.json`) | on (`alerted_posts_micro1.json`) | on (`alerted_posts_tab.json`) | on (`alerted_posts_wron.json`) | on (`alerted_posts_fomo.json`) | on (`alerted_posts_teamily.json`, Europe: `alerted_posts_teamily_eu.json`) |
 | Daily posts digest | off | on | off | off | off | off |
 
 FOMO's report differs from Krea's in two ways:
@@ -108,6 +108,15 @@ verbatim and reply `SENT` or `FAILED`. Anything other than a completed, confirme
 (including `requires_approval`) fails the job without retrying or approving. The agent API
 is only called when there's something to send. `--test` alerts aren't supported for
 Teamily, since the group is the live client chat.
+
+Teamily has two LaunchPoint campaigns: the US cohort (`TEAMILY_CAMPAIGN_ID`) and the
+Europe cohort (`TEAMILY_EU_CAMPAIGN_ID`, "Teamily (Europe)"). They share one daily
+report (one Teamily send): a budget line with both campaigns' spend combined against
+`TEAMILY_TOTAL_BUDGET`, then a "🇺🇸 US cohort" and a "🇪🇺 Europe cohort" section, each
+with its own views, posts, creators, CPM, engagement and top 3 creators of the last 7
+days. Milestone alerts check both; Europe alerts start with 🇪🇺 and use their own state
+file (`alerted_posts_teamily_eu.json`) and start date (`TEAMILY_EU_ALERT_START_DATE`,
+default 2026-11-23).
 
 Bon Credit gets no Slack messages at all: no daily report, no milestone alerts, no digest.
 It gets a weekly email instead (see below).
@@ -175,7 +184,7 @@ The `Viral Video Alerts` GitHub Actions workflow runs this every 3 hours (or man
 from the Actions tab) and commits the updated file back to the repo. Alert start dates default to
 2026-10-05 for Krea, 2026-10-13 for micro1, Tab and Wron AI, 2026-10-14 for FOMO, and 2026-10-20 for Teamily; to
 override them there, set `ALERT_START_DATE` / `MICRO1_ALERT_START_DATE` / `TAB_ALERT_START_DATE` /
-`WRON_ALERT_START_DATE` / `FOMO_ALERT_START_DATE` / `TEAMILY_ALERT_START_DATE` as repository *variables* (not secrets).
+`WRON_ALERT_START_DATE` / `FOMO_ALERT_START_DATE` / `TEAMILY_ALERT_START_DATE` / `TEAMILY_EU_ALERT_START_DATE` as repository *variables* (not secrets).
 
 Both workflows run each client as a separate job, so one client failing doesn't
 stop the others.
