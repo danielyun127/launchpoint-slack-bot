@@ -88,7 +88,8 @@ def build_blocks(metrics: CampaignMetrics, client: ClientConfig, conversions=Non
     """cohorts: [(label, CampaignMetrics)] for a client with several campaigns
     (client.cohorts). The budget line is then their combined spend, followed by
     a section per cohort; metrics is unused."""
-    today = datetime.date.today().strftime("%b %d, %Y")
+    # Pacific, not the machine's clock (GitHub runners are UTC).
+    today = datetime.datetime.now(PACIFIC).date().strftime("%b %d, %Y")
     header = [
         *([_section(note)] if note else []),
         {

@@ -20,6 +20,9 @@ import os
 import datetime
 import requests
 from dataclasses import dataclass, field
+from zoneinfo import ZoneInfo
+
+PACIFIC = ZoneInfo("America/Los_Angeles")
 
 MCP_URL = os.environ.get("LAUNCHPOINT_MCP_URL", "").strip()
 API_KEY = os.environ.get("LAUNCHPOINT_API_KEY", "").strip()
@@ -213,9 +216,10 @@ def _fetch_top_creators_7d(session, program_id: str, excluded: set = EXCLUDED_CR
     """
     get_analytics_overview filters by post publish date when from_date/to_date
     are given, and its topCreators for that filtered window is already sorted
-    by views — exactly the trailing-7-day ranking we need.
+    by views — exactly the trailing-7-day ranking we need. "Today" is Pacific,
+    not the machine's clock (GitHub runners are UTC).
     """
-    today = datetime.date.today()
+    today = datetime.datetime.now(PACIFIC).date()
     week_ago = today - datetime.timedelta(days=7)
     result = session.call_tool(
         "get_analytics_overview",
