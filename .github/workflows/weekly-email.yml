@@ -1,13 +1,14 @@
 name: Weekly Client Email
 
 on:
-  schedule:
-    # Fridays at 9:00 AM Pacific. GitHub cron is UTC-only, so this fires at
-    # both 16:00 UTC (9am PDT) and 17:00 UTC (9am PST), and the gate step
-    # below lets through only the one that is 9am Pacific this week. No
-    # changes needed when daylight saving starts or ends.
-    - cron: "0 16 * * 5"
-    - cron: "0 17 * * 5"
+  # Bon Credit is paused: the Friday schedule is off. To resume, uncomment:
+  # schedule:
+  #   # Fridays at 9:00 AM Pacific. GitHub cron is UTC-only, so this fires at
+  #   # both 16:00 UTC (9am PDT) and 17:00 UTC (9am PST), and the gate step
+  #   # below lets through only the one that is 9am Pacific this week. No
+  #   # changes needed when daylight saving starts or ends.
+  #   - cron: "0 16 * * 5"
+  #   - cron: "0 17 * * 5"
   workflow_dispatch:
     inputs:
       test:

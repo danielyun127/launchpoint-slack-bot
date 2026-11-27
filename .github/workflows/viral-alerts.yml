@@ -27,9 +27,9 @@ jobs:
         include:
           - client: micro1
             state_file: alerted_posts_micro1.json
-          - client: tab
-            state_file: alerted_posts_tab.json
-          # Krea, Wron AI and FOMO are paused; to resume, add back:
+          # Krea, Wron AI, FOMO and Tab are paused; to resume, add back:
+          #   - client: tab
+          #     state_file: alerted_posts_tab.json
           #   - client: krea
           #     state_file: alerted_posts.json
           #   - client: wron

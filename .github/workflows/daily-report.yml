@@ -56,8 +56,8 @@ jobs:
       # (429) when too many jobs call it at once.
       max-parallel: 2
       matrix:
-        # Krea, Wron AI and FOMO are paused: add "krea" / "wron" / "fomo" back here to resume.
-        client: ${{ fromJSON(inputs.client && format('["{0}"]', inputs.client) || '["micro1", "tab", "teamily"]') }}
+        # Krea, Wron AI, FOMO and Tab are paused: add "krea" / "wron" / "fomo" / "tab" back here to resume.
+        client: ${{ fromJSON(inputs.client && format('["{0}"]', inputs.client) || '["micro1", "teamily"]') }}
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
